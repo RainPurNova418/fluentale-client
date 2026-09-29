@@ -1,0 +1,20 @@
+SettingsWidget {
+    background: transparent;
+    border: none;
+}
+
+#scrollWidget {
+    background: transparent;
+}
+
+SettingCardGroup QLabel {
+    color: #1a1a1a;
+}
+
+#titleLabel {
+    color: #1a1a1a;
+}
+
+#contentLabel {
+    color: #606060;
+}
