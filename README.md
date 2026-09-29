@@ -10,6 +10,8 @@
 
 基于 [PySide6](https://pypi.org/project/PySide6/) 和 [QFluentWidgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) 构建的 FimTale 第三方客户端。
 
+**本项目为个人开发的非官方工具，与 FimTale 官方无隶属、代理或合作关系。**
+
 -----
 
 ## 功能
@@ -20,7 +22,7 @@
 
 - Windows 10 及以上
 - Python 3.10+（仅开发）
-- **未被封禁**的 FimTale 用户账户（用于生成 APIKey / APIPass）
+- **有效**的 FimTale 用户账户（用于生成 APIKey / APIPass）
 
 ## 使用
 
@@ -43,3 +45,12 @@ python main.py
 pip install pyinstaller
 python -m PyInstaller --noconfirm FluentTaleClient.spec
 ```
+
+## 协议
+
+本项目采用 [GNU GPLv3](LICENSE) 授权。
+
+## 联系方式
+
+- 邮箱：unuyouset@outlook.com
+- 项目地址：https://github.com/RainPurNova418/fluentale-client
