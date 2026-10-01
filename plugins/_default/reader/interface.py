@@ -2,9 +2,16 @@
 # coding: utf-8
 from typing import Optional
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
+from PySide6.QtCore import (
+    Qt, QUrl, QTimer, QEventLoop, Signal, QSize, QRect, QModelIndex,
+)
+from PySide6.QtGui import (
+    QDesktopServices, QPainter, QColor, QFontMetrics,
+)
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy,
+    QListWidgetItem, QStyle, QStyleOptionViewItem, QStyledItemDelegate,
+)
 
 from qfluentwidgets import (
     FluentIcon as FIF,
@@ -13,9 +20,12 @@ from qfluentwidgets import (
     PrimaryPushButton, LineEdit, BodyLabel, TitleLabel,
     CaptionLabel, ProgressBar,
     IndeterminateProgressBar,
+    ListWidget,
     InfoBar, InfoBarPosition,
     isDarkTheme, qconfig,
+    ToolTipFilter, ToolTipPosition,
 )
+from qfluentwidgets.components.widgets.list_view import ListItemDelegate
 
 from toolmethods import log_info
 
@@ -23,10 +33,170 @@ from .api import ApiError, NotFoundError
 from .loader import LoadWorker, get_loader
 from .markdown import md_to_html
 from .image_browser import ImageBrowser
+from . import cache
 
 
 # ══════════════════════════════════════════════════════════════
-#  导航入口
+#  自定义 role
+# ══════════════════════════════════════════════════════════════
+
+ROLE_TOPIC_ID = Qt.UserRole + 1
+ROLE_BADGES = Qt.UserRole + 2
+ROLE_DISPLAY = Qt.UserRole + 3
+
+
+# ══════════════════════════════════════════════════════════════
+#  最近阅读 delegate
+# ══════════════════════════════════════════════════════════════
+
+class RecentItemDelegate(ListItemDelegate):
+    """最近阅读 item：徽章 pill + 作品名 + 章节名 + ID"""
+
+    PADDING_H = 12
+    PADDING_V = 8
+    BADGE_H = 20
+    BADGE_PADDING_H = 8
+    BADGE_GAP = 6
+    TITLE_ID_GAP = 12
+    ROW_HEIGHT = 40
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem,
+              index: QModelIndex):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        if option.state & QStyle.State_Selected:
+            painter.setBrush(QColor(0, 0, 0, 15) if not isDarkTheme()
+                             else QColor(255, 255, 255, 25))
+            painter.setPen(Qt.NoPen)
+            r = option.rect.adjusted(2, 1, -2, -1)
+            painter.drawRoundedRect(r, 5, 5)
+        elif option.state & QStyle.State_MouseOver:
+            painter.setBrush(QColor(0, 0, 0, 10) if not isDarkTheme()
+                             else QColor(255, 255, 255, 15))
+            painter.setPen(Qt.NoPen)
+            r = option.rect.adjusted(2, 1, -2, -1)
+            painter.drawRoundedRect(r, 5, 5)
+
+        badges = index.data(ROLE_BADGES) or []
+        display = index.data(ROLE_DISPLAY) or ""
+        topic_id = index.data(ROLE_TOPIC_ID)
+
+        text_color = QColor("#e0e0e0") if isDarkTheme() else QColor("#1a1a1a")
+        badge_bg = QColor("#4a6c8f") if isDarkTheme() else QColor("#d0e4f5")
+        badge_fg = QColor("#ffffff") if isDarkTheme() else QColor("#1a4a6c")
+        id_color = QColor("#888888")
+
+        x = option.rect.x() + self.PADDING_H
+        y = option.rect.y() + self.PADDING_V
+        h = option.rect.height() - self.PADDING_V * 2
+
+        badge_font = painter.font()
+        badge_font.setPointSize(9)
+        painter.setFont(badge_font)
+        fm = QFontMetrics(badge_font)
+
+        for b in badges:
+            w = fm.horizontalAdvance(b) + self.BADGE_PADDING_H * 2
+            badge_rect = QRect(x, y + (h - self.BADGE_H) // 2, w, self.BADGE_H)
+            painter.setBrush(badge_bg)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(badge_rect, self.BADGE_H // 2,
+                                    self.BADGE_H // 2)
+            painter.setPen(badge_fg)
+            painter.drawText(badge_rect, Qt.AlignCenter, b)
+            x += w + self.BADGE_GAP
+
+        id_text = f"#{topic_id}" if topic_id else ""
+        id_font = painter.font()
+        id_font.setPointSize(9)
+        id_fm = QFontMetrics(id_font)
+        id_w = id_fm.horizontalAdvance(id_text) if id_text else 0
+
+        title_font = painter.font()
+        title_font.setPointSize(10)
+        painter.setFont(title_font)
+
+        avail_w = option.rect.right() - self.PADDING_H - x
+        if id_text:
+            avail_w -= id_w + self.TITLE_ID_GAP
+
+        fm2 = QFontMetrics(title_font)
+        elided = fm2.elidedText(display, Qt.ElideRight, max(0, avail_w))
+
+        painter.setPen(text_color)
+        painter.drawText(
+            QRect(x, option.rect.y(), max(0, avail_w), option.rect.height()),
+            Qt.AlignVCenter | Qt.AlignLeft, elided
+        )
+
+        if id_text:
+            id_x = option.rect.right() - self.PADDING_H - id_w
+            painter.setFont(id_font)
+            painter.setPen(id_color)
+            painter.drawText(
+                QRect(id_x, option.rect.y(), id_w, option.rect.height()),
+                Qt.AlignVCenter | Qt.AlignRight, id_text
+            )
+
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        return QSize(option.rect.width(), self.ROW_HEIGHT)
+
+
+# ══════════════════════════════════════════════════════════════
+#  Topic ID 输入对话框
+# ══════════════════════════════════════════════════════════════
+
+try:
+    from plugins._default.login import _FluentDialog
+except ImportError:
+    _FluentDialog = None
+
+
+if _FluentDialog is not None:
+    class _TopicInputDialog(_FluentDialog):
+        """输入 Topic ID 打开新作品"""
+
+        def __init__(self, parent=None):
+            super().__init__("打开新作品", parent)
+            self.topic_id = None
+
+            title = TitleLabel("打开新作品", self)
+            self.addContent(title)
+
+            desc = BodyLabel("输入 FimTale 帖子 ID，将加载对应内容。", self)
+            desc.setWordWrap(True)
+            self.addContent(desc)
+
+            self.input = LineEdit(self)
+            self.input.setPlaceholderText("例如：1431")
+            self.input.setClearButtonEnabled(True)
+            self.input.returnPressed.connect(self.yesButton.click)
+            self.addContent(self.input)
+
+            self.yesButton.setText("打开")
+            self.cancelButton.setText("取消")
+            self.resize(400, 260)
+
+        def validate(self):
+            text = self.input.text().strip()
+            if not text.isdigit():
+                InfoBar.warning(
+                    "无效 ID", "请输入数字",
+                    parent=self, position=InfoBarPosition.TOP, duration=1500,
+                )
+                return False
+            self.topic_id = int(text)
+            self.passed = True
+            return True
+else:
+    _TopicInputDialog = None
+
+
+# ══════════════════════════════════════════════════════════════
+#  导航入口（最近阅读 + ID 输入）
 # ══════════════════════════════════════════════════════════════
 
 class ReaderInterface(QWidget):
@@ -41,24 +211,94 @@ class ReaderInterface(QWidget):
 
         layout.addWidget(TitleLabel("阅读器", self))
         layout.addWidget(BodyLabel(
-            "输入 FimTale 帖子 ID，打开独立阅读窗口。", self
+            "输入 FimTale 帖子 ID 打开新窗口，或从下方最近阅读中选择。", self
         ))
 
         row = QHBoxLayout()
         self.input = LineEdit(self)
         self.input.setPlaceholderText("例如：1431")
         self.input.setClearButtonEnabled(True)
-        self.input.returnPressed.connect(self._open)
+        self.input.returnPressed.connect(self._open_from_input)
         row.addWidget(self.input, 1)
 
         btn = PrimaryPushButton("打开", self)
-        btn.clicked.connect(self._open)
+        btn.clicked.connect(self._open_from_input)
         row.addWidget(btn)
 
         layout.addLayout(row)
-        layout.addStretch(1)
+        layout.addSpacing(12)
 
-    def _open(self):
+        self.recentLabel = BodyLabel("最近阅读", self)
+        layout.addWidget(self.recentLabel)
+
+        self.recentList = ListWidget(self)
+        self.recentList.setItemDelegate(
+            RecentItemDelegate(self.recentList)
+        )
+        self.recentList.itemClicked.connect(self._on_recent_clicked)
+        layout.addWidget(self.recentList, 1)
+
+        qconfig.themeChanged.connect(self.recentList.viewport().update)
+
+        self._refresh_recent()
+
+    def open_topic(self, topic_id: int):
+        self._open_window(int(topic_id))
+
+    @staticmethod
+    def _wrap_title(title: str) -> str:
+        t = (title or "").strip()
+        if not t:
+            return t
+        if (t.startswith("《") and t.endswith("》")) or \
+           (t.startswith("〈") and t.endswith("〉")):
+            return t
+        return f"《{t}》"
+
+    @staticmethod
+    def _extract_badges(title: str):
+        import re
+        if not title:
+            return [], ""
+        pattern = re.compile(r'[\[【]([^\]】]+)[\]】]')
+        badges = pattern.findall(title)
+        clean = pattern.sub("", title).strip()
+        return badges, clean
+
+    def _refresh_recent(self):
+        self.recentList.clear()
+        items = cache.get_recent_topics(30)
+
+        if not items:
+            item = QListWidgetItem("（暂无阅读记录）")
+            item.setFlags(Qt.NoItemFlags)
+            self.recentList.addItem(item)
+            return
+
+        for it in items:
+            if it["parent_title"]:
+                badges, work = self._extract_badges(it["parent_title"])
+                work = self._wrap_title(work)
+                display = f"{work} · {it['title']}"
+            else:
+                badges, work = self._extract_badges(it["title"])
+                work = self._wrap_title(work)
+                display = work
+
+            item = QListWidgetItem()
+            item.setData(ROLE_TOPIC_ID, it["id"])
+            item.setData(ROLE_BADGES, badges)
+            item.setData(ROLE_DISPLAY, display)
+            item.setSizeHint(QSize(0, RecentItemDelegate.ROW_HEIGHT))
+            self.recentList.addItem(item)
+
+    def _on_recent_clicked(self, item: QListWidgetItem):
+        tid = item.data(ROLE_TOPIC_ID)
+        if tid is None:
+            return
+        self._open_window(int(tid))
+
+    def _open_from_input(self):
         text = self.input.text().strip()
         if not text.isdigit():
             InfoBar.warning(
@@ -66,10 +306,22 @@ class ReaderInterface(QWidget):
                 parent=self, position=InfoBarPosition.TOP, duration=1500,
             )
             return
+        self._open_window(int(text))
+
+    def _open_window(self, topic_id: int):
         if self._window is not None:
-            self._window.close()
-        self._window = ReaderWindow(int(text))
+            try:
+                self._window.close()
+            except Exception:
+                pass
+        self._window = ReaderWindow(topic_id)
         self._window.show()
+        self._window.raise_()
+        self._window.activateWindow()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._refresh_recent()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -102,13 +354,23 @@ class ReaderWindow(FluentWindow):
         )
         self._hide_nav_item("readerContent")
 
+        # resize 防抖
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(200)
+        self._resize_timer.timeout.connect(self._on_resize_settled)
+
+        # 文档尺寸变化防抖
+        self._height_sync_timer = QTimer(self)
+        self._height_sync_timer.setSingleShot(True)
+        self._height_sync_timer.setInterval(80)
+        self._height_sync_timer.timeout.connect(self._sync_browser_height)
+
         self._apply_theme()
         qconfig.themeChanged.connect(self._apply_theme)
 
         self._show_skeleton()
         self._start_load()
-
-    # ── 隐藏"正文"导航项 ──
 
     def _hide_nav_item(self, route_key: str):
         try:
@@ -119,8 +381,6 @@ class ReaderWindow(FluentWindow):
         except Exception:
             pass
 
-    # ── 内容容器 ──
-
     def _build_content_container(self):
         container = QWidget(self)
         container.setObjectName("readerContent")
@@ -128,20 +388,17 @@ class ReaderWindow(FluentWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 顶部 Fluent 加载条
         self.loadingBar = IndeterminateProgressBar(container)
         self.loadingBar.setFixedHeight(3)
         self.loadingBar.hide()
         layout.addWidget(self.loadingBar)
 
-        # 平滑滚动容器
         self.scrollArea = SmoothScrollArea(container)
         self.scrollArea.setObjectName("readerScroll")
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scrollArea.setFrameShape(SmoothScrollArea.NoFrame)
 
-        # 内层 QTextBrowser
         self.browser = ImageBrowser(self.scrollArea)
         self.browser.setObjectName("readerBrowser")
         self.browser.setOpenExternalLinks(False)
@@ -153,12 +410,13 @@ class ReaderWindow(FluentWindow):
 
         layout.addWidget(self.scrollArea, 1)
 
+        # 文档尺寸变化 → 防抖
         self.browser.document().documentLayout().documentSizeChanged.connect(
-            self._sync_browser_height
+            lambda: self._height_sync_timer.start()
         )
         self.scrollArea.verticalScrollBar().valueChanged.connect(self._on_scroll)
 
-        # 底部栏
+        # ── 底部栏 ──
         bottom = QWidget(container)
         bottom.setObjectName("readerBottom")
         bottom.setFixedHeight(44)
@@ -175,31 +433,49 @@ class ReaderWindow(FluentWindow):
         self.progressBar.setFixedHeight(6)
         bottom_layout.addWidget(self.progressBar, 1)
 
-        # 刷新按钮
+        self.openBtn = TransparentToolButton(FIF.FOLDER_ADD, bottom)
+        self.openBtn.setFixedSize(28, 28)
+        self.openBtn.setToolTip("打开新作品")
+        self.openBtn.installEventFilter(
+            ToolTipFilter(self.openBtn, showDelay=250,
+                          position=ToolTipPosition.TOP)
+        )
+        self.openBtn.clicked.connect(self._on_open_new)
+        bottom_layout.addWidget(self.openBtn)
+
         self.refreshBtn = TransparentToolButton(FIF.SYNC, bottom)
         self.refreshBtn.setFixedSize(28, 28)
         self.refreshBtn.setToolTip("忽略缓存，重新拉取当前章节")
+        self.refreshBtn.installEventFilter(
+            ToolTipFilter(self.refreshBtn, showDelay=250,
+                          position=ToolTipPosition.TOP)
+        )
         self.refreshBtn.clicked.connect(self._on_refresh_clicked)
         bottom_layout.addWidget(self.refreshBtn)
 
-        # 字号按钮
         self.fontDownBtn = TransparentToolButton(FIF.REMOVE, bottom)
         self.fontDownBtn.setFixedSize(28, 28)
         self.fontDownBtn.setToolTip("减小字号")
+        self.fontDownBtn.installEventFilter(
+            ToolTipFilter(self.fontDownBtn, showDelay=250,
+                          position=ToolTipPosition.TOP)
+        )
         self.fontDownBtn.clicked.connect(lambda: self._change_font(-1))
         bottom_layout.addWidget(self.fontDownBtn)
 
         self.fontUpBtn = TransparentToolButton(FIF.ADD, bottom)
         self.fontUpBtn.setFixedSize(28, 28)
         self.fontUpBtn.setToolTip("增大字号")
+        self.fontUpBtn.installEventFilter(
+            ToolTipFilter(self.fontUpBtn, showDelay=250,
+                          position=ToolTipPosition.TOP)
+        )
         self.fontUpBtn.clicked.connect(lambda: self._change_font(1))
         bottom_layout.addWidget(self.fontUpBtn)
 
         layout.addWidget(bottom)
 
         return container
-
-    # ── 加载指示 ──
 
     def _set_loading(self, on: bool):
         if on:
@@ -210,31 +486,34 @@ class ReaderWindow(FluentWindow):
             self.loadingBar.stop()
             self.loadingBar.hide()
 
-    # ── 尺寸同步 ──
-
     def _sync_browser_height(self):
         if not hasattr(self, "browser") or not hasattr(self, "scrollArea"):
             return
-
-        viewport_h = self.scrollArea.viewport().height()
-        if viewport_h <= 0:
-            return
-
-        doc_h = int(self.browser.document().size().height())
-        target = max(doc_h + 96, viewport_h)
-
-        if self.browser.minimumHeight() != target:
-            self.browser.setMinimumHeight(target)
+        try:
+            viewport_h = self.scrollArea.viewport().height()
+            if viewport_h <= 0:
+                return
+            doc_h = int(self.browser.document().size().height())
+            target = max(doc_h + 96, viewport_h)
+            if self.browser.minimumHeight() != target:
+                self.browser.setMinimumHeight(target)
+        except Exception:
+            pass
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._sync_browser_height()
+        if hasattr(self, "_resize_timer"):
+            self._resize_timer.start()
+
+    def _on_resize_settled(self):
+        if not self._raw_md:
+            return
+        self._rerender()
 
     def showEvent(self, e):
         super().showEvent(e)
         self._sync_browser_height()
-
-    # ── 加载 ──
 
     def _start_load(self, force_refresh: bool = False):
         self._set_loading(True)
@@ -266,15 +545,33 @@ class ReaderWindow(FluentWindow):
             parent=self, position=InfoBarPosition.TOP_RIGHT, duration=3000,
         )
 
-    # ── 刷新 ──
-
     def _on_refresh_clicked(self):
         if not self.topic_id:
             return
         log_info(f"[Reader] 用户强制刷新 topic {self.topic_id}")
         self._start_load(force_refresh=True)
 
-    # ── 章节目录 ──
+    def _on_open_new(self):
+        if _TopicInputDialog is None:
+            InfoBar.warning(
+                "不可用", "未找到输入对话框组件",
+                parent=self, position=InfoBarPosition.TOP, duration=2000,
+            )
+            return
+
+        dlg = _TopicInputDialog(parent=self)
+        dlg.show()
+        loop = QEventLoop()
+        dlg.destroyed.connect(loop.quit)
+        loop.exec()
+
+        if not dlg.passed or dlg.topic_id is None:
+            return
+        if dlg.topic_id == self.topic_id:
+            return
+
+        log_info(f"[Reader] 打开新作品: {dlg.topic_id}")
+        self._load_chapter(dlg.topic_id)
 
     def _rebuild_chapter_list(self):
         if not self.topic:
@@ -316,8 +613,6 @@ class ReaderWindow(FluentWindow):
         self.topic_id = topic_id
         self._start_load()
 
-    # ── 渲染 ──
-
     def _show_skeleton(self):
         self._raw_md = ""
         self._raw_html = "<h1>加载中…</h1><p>正在获取内容，请稍候。</p>"
@@ -330,18 +625,30 @@ class ReaderWindow(FluentWindow):
         self._revealed_spoilers.clear()
         self._rerender()
 
+        QTimer.singleShot(200, self._height_sync_timer.start)
+        QTimer.singleShot(500, self._height_sync_timer.start)
+
     def _rerender(self):
+        vp_w = self.scrollArea.viewport().width()
+        if vp_w < 200:
+            vp_w = 1000
+        max_img_w = max(200, vp_w - 130)
+        self.browser.set_max_image_width(max_img_w)
+
         self._raw_html = md_to_html(
             self._raw_md,
             revealed_spoilers=self._revealed_spoilers,
             logged_in=True,
         )
-        self.browser.setHtml(self._raw_html)
-        self._sync_browser_height()
-        self.scrollArea.verticalScrollBar().setValue(0)
-        self._update_progress_display()
 
-    # ── 阅读进度 ──
+        html = self._raw_html.replace(
+            '<img ',
+            f'<img style="max-width:{max_img_w}px;height:auto;" '
+        )
+
+        self.browser.setHtml(html)
+        self._sync_browser_height()
+        self._update_progress_display()
 
     def _on_scroll(self, value: int):
         self._update_progress_display()
@@ -359,20 +666,15 @@ class ReaderWindow(FluentWindow):
         self.progressBar.setValue(pct)
         self.readingLabel.setText(f"阅读进度 {pct}%")
 
-    # ── 字号 ──
-
     def _change_font(self, delta: int):
         self._font_size = max(10, min(30, self._font_size + delta))
         self._apply_theme()
         if self._raw_md:
             self._rerender()
 
-    # ── 链接 & spoiler ──
-
     def _on_anchor_clicked(self, url: QUrl):
         u = url.toString()
 
-        # spoiler 点击展开
         if u.startswith("spoiler:"):
             try:
                 idx = int(u.split(":", 1)[1])
@@ -384,7 +686,6 @@ class ReaderWindow(FluentWindow):
             self._rerender()
             return
 
-        # FimTale topic 链接 → 内部加载
         if u.startswith("https://fimtale.com/t/") or u.startswith("http://fimtale.com/t/"):
             try:
                 tid = int(u.rstrip("/").split("/")[-1])
@@ -394,8 +695,6 @@ class ReaderWindow(FluentWindow):
                 pass
 
         QDesktopServices.openUrl(url)
-
-    # ── 主题 ──
 
     def _apply_theme(self):
         if isDarkTheme():

@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
-import urllib3.util.connection as urllib3_cn    # 紧跟 requests
+import urllib3.util.connection as urllib3_cn
 
 from PySide6.QtCore import QObject, Signal
 from tqdm import tqdm
@@ -64,7 +64,8 @@ def _get_session() -> requests.Session:
 #  图片 URL 提取
 # ══════════════════════════════════════════════════════════════
 
-_IMG_URL_RE = re.compile(r'!\[[^\]]*\]\(\s*(\S+?)(?:\s+"[^"]*")?\s*\)')
+_IMG_URL_RE = re.compile(r'!\[[^\]]*\]\(\s*(\S+?)(?:\s+["\'][^"\']*["\'])?\s*\)')
+
 
 def _extract_image_urls(content: str):
     return _IMG_URL_RE.findall(content or "")
@@ -144,7 +145,6 @@ class LoadWorker(QObject):
         )
 
         for url in pbar:
-            # 缓存命中
             data = cache.read_image(url) if cache.has_image(url) else None
             if data and len(data) > 0:
                 done += 1
@@ -153,7 +153,6 @@ class LoadWorker(QObject):
                 pbar.set_postfix_str(f"hit {ok}")
                 continue
 
-            # 下载
             success = False
             try:
                 r = s.get(url, timeout=30)
@@ -177,6 +176,7 @@ class LoadWorker(QObject):
             pbar.set_postfix_str(f"ok {ok} fail {failed}")
 
         pbar.close()
+        print(flush=True)   # tqdm 结束后换行，避免日志顶残影
 
         if failed:
             log_warning(

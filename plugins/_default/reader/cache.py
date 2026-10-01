@@ -127,6 +127,54 @@ def delete(topic_id: int):
         meta.pop(str(topic_id), None)
         _save_meta(meta)
 
+def get_recent_topics(limit: int = 30):
+    """
+    返回最近访问的 topic 列表：
+        [{id, title, parent_title, accessed_at}, ...]
+    按 accessed_at 降序。
+    """
+    meta = _load_meta()
+    items = []
+    for key, entry in meta.items():
+        try:
+            tid = int(key)
+        except ValueError:
+            continue
+
+        title = f"Topic {tid}"
+        parent_title = ""
+
+        try:
+            path = _topic_path(tid)
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                info = data.get("TopicInfo") or {}
+                t = info.get("Title", "")
+                if t:
+                    title = t
+
+                # 如果是章节，ParentInfo 指向所属作品
+                parent = data.get("ParentInfo") or {}
+                if isinstance(parent, dict) and parent:
+                    pid = parent.get("ID")
+                    pt = parent.get("Title", "")
+                    if pt and pid != tid:
+                        parent_title = pt
+        except Exception:
+            pass
+
+        items.append({
+            "id": tid,
+            "title": title,
+            "parent_title": parent_title,
+            "accessed_at": entry.get("accessed_at", 0),
+        })
+
+    items.sort(key=lambda x: x["accessed_at"], reverse=True)
+    return items[:limit]
+
 
 def _evict(meta: dict):
     if len(meta) <= MAX_CACHE_ENTRIES:
