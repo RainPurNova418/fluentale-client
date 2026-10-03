@@ -1,5 +1,6 @@
 # plugins/_default/reader/interface.py
 # coding: utf-8
+import random, re
 from typing import Optional
 
 from PySide6.QtCore import (
@@ -20,12 +21,11 @@ from qfluentwidgets import (
     PrimaryPushButton, LineEdit, BodyLabel, TitleLabel,
     CaptionLabel, ProgressBar,
     IndeterminateProgressBar,
-    ListWidget,
+    ListWidget, ListItemDelegate,
     InfoBar, InfoBarPosition,
     isDarkTheme, qconfig,
     ToolTipFilter, ToolTipPosition,
 )
-from qfluentwidgets.components.widgets.list_view import ListItemDelegate
 
 from toolmethods import log_info
 
@@ -35,6 +35,7 @@ from .markdown import md_to_html
 from .image_browser import ImageBrowser
 from . import cache
 
+from app_state import app_state
 
 # ══════════════════════════════════════════════════════════════
 #  自定义 role
@@ -43,6 +44,66 @@ from . import cache
 ROLE_TOPIC_ID = Qt.UserRole + 1
 ROLE_BADGES = Qt.UserRole + 2
 ROLE_DISPLAY = Qt.UserRole + 3
+
+
+# ══════════════════════════════════════════════════════════════
+#  Placeholder 生成
+# ══════════════════════════════════════════════════════════════
+
+# 全新用户没有任何浏览记录时的兜底列表
+_DEFAULT_PLACEHOLDER_IDS = [
+    "4", "5", "86574", "268", "4310", "4809", "5272", "2520", "53207",
+    "85746", "57519", "53229", "56187", "87659", "88789", "87266",
+    "87349", "32953", "91116", "9984", "5332", "29930", "76800", 
+    "89705", "1788", "84930", "81520"
+]
+
+# "16326" - 《3小时47分钟》
+# 作者：Accurate_Balance
+# 感谢您的付出与贡献。
+# 获奖记录：
+# 2020年 - Raa征文比赛一等奖获奖作品
+# 2023年 - FimFiction第二届科幻小说征文比赛“委员会奖”（英文版）
+# 3小时47分不但臻于剧情和文笔，而且其反映的内核深刻地讽刺了当下娱乐化的发展。
+# 除此之外，本文中的部分情节精确反映了当下社会问题。作者也曾说，“本以为是寓言故事，后来才发现，原来是预言故事”。
+# 这篇优秀的文章在 FimTale 上已被删除，可能是作者自删。但无论如何，我们都不可否认的是她的作品，和她真正臻于热爱的创作。
+# 以及她本身。
+# 谨以此，献给 Accurate_Balance 以及其对马圈不可磨灭的贡献。
+
+# 如果你看到了这一段注释，那么也感谢你看完这一段对于理解代码并没有用的一大串文字。
+# 祝您生活愉快！
+
+def _make_placeholder() -> str:
+    """
+    生成输入框的 placeholder。
+
+    规则：
+    1. 根帖足够多（>= 8）→ 只从根帖里抽
+    2. 根帖不够 → 根帖 + 内置名帖 一起抽
+    3. 完全没历史 → 只用内置名帖
+    """
+    defaults = list(_DEFAULT_PLACEHOLDER_IDS)
+
+    try:
+        recent = cache.get_recent_topics(30)
+    except Exception:
+        recent = []
+
+    roots = [str(it["id"]) for it in recent if not it.get("parent_title")]
+    others = [str(it["id"]) for it in recent if it.get("parent_title")]
+
+    if len(roots) >= 8:
+        pool = roots
+    elif roots:
+        # 根帖不够，拿内置名帖补齐
+        merged = roots + [x for x in defaults if x not in roots]
+        pool = merged
+    elif others:
+        pool = others
+    else:
+        pool = defaults
+
+    return f"例如：{random.choice(pool)}"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -171,7 +232,7 @@ if _FluentDialog is not None:
             self.addContent(desc)
 
             self.input = LineEdit(self)
-            self.input.setPlaceholderText("例如：1431")
+            self.input.setPlaceholderText(_make_placeholder())   # ← 改这里
             self.input.setClearButtonEnabled(True)
             self.input.returnPressed.connect(self.yesButton.click)
             self.addContent(self.input)
@@ -216,7 +277,7 @@ class ReaderInterface(QWidget):
 
         row = QHBoxLayout()
         self.input = LineEdit(self)
-        self.input.setPlaceholderText("例如：1431")
+        self.input.setPlaceholderText(_make_placeholder())   # ← 改这里
         self.input.setClearButtonEnabled(True)
         self.input.returnPressed.connect(self._open_from_input)
         row.addWidget(self.input, 1)
@@ -257,7 +318,6 @@ class ReaderInterface(QWidget):
 
     @staticmethod
     def _extract_badges(title: str):
-        import re
         if not title:
             return [], ""
         pattern = re.compile(r'[\[【]([^\]】]+)[\]】]')
@@ -322,6 +382,7 @@ class ReaderInterface(QWidget):
     def showEvent(self, e):
         super().showEvent(e)
         self._refresh_recent()
+        self.input.setPlaceholderText(_make_placeholder())   # ← 改这里
 
 
 # ══════════════════════════════════════════════════════════════
@@ -528,6 +589,7 @@ class ReaderWindow(FluentWindow):
         self.topic = topic
         self.setWindowTitle(topic.title)
         self._rebuild_chapter_list()
+        app_state.set_reader_topic(topic, self)   # ← 加这行
 
     def _on_content_ready(self, topic_id: int, topic):
         self._render_content(topic)

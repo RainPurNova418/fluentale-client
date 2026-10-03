@@ -36,8 +36,14 @@ class PluginManager:
             log("加载系统默认插件 (_default)", "INFO")
             self._scan_container(default_dir, is_default=True)
 
+        # 这些目录放在 plugins/ 下，但不是插件，跳过
+        _SKIP_DIRS = {"devtest", "__pycache__"}
+
         for item in sorted(self.plugins_root.iterdir()):
             if item.name.startswith("_") or not item.is_dir():
+                continue
+            if item.name in _SKIP_DIRS:
+                log(f"跳过非插件目录: {item.name}", "DEBUG")
                 continue
             log(f"扫描普通插件目录: {item.name}", "DEBUG")
             self._scan_container(item, is_default=False)

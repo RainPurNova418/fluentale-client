@@ -22,7 +22,9 @@ def main():
     print("=" * 64)
 
     from PySide6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication(sys.argv)
+    app = QApplication.instance()
+    if app is None:
+        print("警告：无 QApplication，指纹信息可能不完整")
 
     ev = RiskEvaluator()
     fp = ev.fingerprint

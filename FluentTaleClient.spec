@@ -27,7 +27,7 @@ a = Analysis(
         ('content', 'content'),
         ('qss', 'qss'),
         ('images', 'images'),
-        ('config', 'config'),
+        ('config/config.json', 'config'),
     ] + _plugin_datas,
     hiddenimports=(
         qf_hidden + fw_hidden

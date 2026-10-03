@@ -8,21 +8,24 @@
     2. python tools/sample_topics.py
     3. 查看控制台汇总 + samples/ 目录下的原始 JSON
 """
-import json
-import random
-import re
-import time
+import re, sys, time, random, json, os
 from pathlib import Path
+from plugins._default.login import CredentialStore
 
 import requests
 
 
 # ══════════════════════════════════════════════════════════════
 #  配置区
-# ══════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
-API_KEY = "1cdc3aa8"
-API_PASS = "8a35b3f8e165"
+_cred = CredentialStore().load()
+if not _cred:
+    print("未登录，无法使用此脚本")
+    sys.exit(1)
+
+API_KEY = _cred.get("api_key", "")
+API_PASS = _cred.get("api_pass", "")
 BASE = "https://fimtale.com"
 
 # 手动指定的 ID，优先采样
@@ -35,7 +38,7 @@ MANUAL_IDS = [
 
 # 按 ID 区间分段采样，覆盖早期 / 中期 / 近期 / 最新
 RANGES = [
-    (100,   999),      # 早期（2018~2019）
+    (100,   999),      # 早期
     (5000,  20000),    # 中期
     (30000, 60000),    # 近期
     (80000, 99999),    # 最新
@@ -44,8 +47,10 @@ PER_RANGE = 3          # 每段抽几个
 SLEEP = 3.5            # 每次请求间隔（秒），防 429
 TIMEOUT = 15           # 单次请求超时
 
-# 输出目录：锚定在项目根目录下，与脚本运行时的 CWD 无关
-OUT_DIR = Path(__file__).resolve().parent.parent / "samples"
+OUT_DIR = (
+    Path(os.getenv("APPDATA", os.path.expanduser("~")))
+    / "FimtaleClient" / "devtest_samples"
+)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -75,12 +80,13 @@ def fetch(topic_id: int, fmt: str = None) -> dict:
 # ══════════════════════════════════════════════════════════════
 
 def strip_md(text: str) -> str:
-    text = re.sub(r'!\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'!\[([^\]]*)\]\([^)]*\)', '', text)      # 图片整删（对齐 html）
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
     text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'^[=\-]{3,}\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)   # 新增：剥引用符号
     text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     text = re.sub(r'`([^`]*)`', r'\1', text)
     text = re.sub(r'\s+', '', text)
@@ -153,7 +159,11 @@ def compare(tid: int):
 
     md_len = len(strip_md(md_c))
     html_len = len(strip_html(html_c))
-    ratio = md_len / html_len if html_len else 0
+    is_image_post = (md_len < 50 and html_len < 50)
+    if is_image_post:
+        ratio = 1.0
+    else:
+        ratio = md_len / html_len if html_len else 0
 
     return {
         "id": tid,

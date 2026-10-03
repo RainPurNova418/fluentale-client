@@ -1,13 +1,18 @@
 # plugins/_default/settings.py
 # coding: utf-8
 """
-设置插件：外观 / 账号 / 幻形灵测试 / 日志 / 关于
+设置插件：外观 / 账号 / 开发者选项 / 日志 / 关于
+
+开发者选项默认隐藏。想开启的用户需要手动编辑 config/config.json，
+将 "developer_mode" 改为 true，然后重启程序。
 """
 import os
 from styles import AppStyle
 from PySide6.QtCore import Qt, QEventLoop
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame
-from plugins._default.login import CredentialStore, _FluentDialog, TOTPDialog, TOTPBindDialog
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QApplication
+from plugins._default.login import (
+    CredentialStore, _FluentDialog, TOTPDialog, TOTPBindDialog,
+)
 
 from qfluentwidgets import (
     FluentIcon as FIF,
@@ -21,8 +26,8 @@ from qfluentwidgets import (
     InfoBar,
     InfoBarPosition,
     Theme,
-    TitleLabel, 
-    BodyLabel
+    TitleLabel,
+    BodyLabel,
 )
 from qfluentwidgets.common.config import (
     QConfig,
@@ -31,14 +36,15 @@ from qfluentwidgets.common.config import (
     OptionsValidator,
     BoolValidator,
     qconfig,
-    EnumSerializer
+    EnumSerializer,
 )
 
 from base_plugin import BasePlugin, PluginType
 from toolmethods import (
     get_version, log_info, log_success, log_warning, log_error, log_debug,
-    resource_path, supports_mica,
+    resource_path, supports_mica, get_json_info,
 )
+
 
 class ConfirmDialog(_FluentDialog):
     """不依赖遮罩的确认框，替代 MessageBox"""
@@ -57,6 +63,7 @@ class ConfirmDialog(_FluentDialog):
         self.cancelButton.setText('取消')
         self.resize(440, 240)
 
+
 # ══════════════════════════════════════════════════════════════
 #  客户端配置
 # ══════════════════════════════════════════════════════════════
@@ -74,7 +81,7 @@ class ClientConfig(QConfig):
     debugLog = ConfigItem("Behavior", "DebugLog", False, BoolValidator())
     keepCredentials = ConfigItem("Behavior", "KeepCredentials", True, BoolValidator())
 
-    # 幻形灵测试调试
+    # 幻形灵测试
     forceRiskLevel = OptionsConfigItem(
         "Testing", "ForceRiskLevel", "off",
         OptionsValidator(["off", "low", "medium", "high", "extreme"]),
@@ -85,6 +92,26 @@ cfg = ClientConfig()
 
 from toolmethods import get_user_settings_path
 qconfig.load(get_user_settings_path(), cfg)
+
+
+# ══════════════════════════════════════════════════════════════
+#  开发者模式判断
+# ══════════════════════════════════════════════════════════════
+
+def _is_developer_mode() -> bool:
+    """
+    从 config/config.json 读取 developer_mode，默认 False。
+
+    打包后优先读 exe 旁边的 config/config.json（可写路径），
+    回退到 _MEIPASS 里的资源副本。详见 toolmethods._config_paths。
+    """
+    try:
+        val = get_json_info("developer_mode", default=False)
+        return bool(val)
+    except Exception as e:
+        log_warning(f"[设置] 读取 developer_mode 失败: {e}")
+        return False
+
 
 # ══════════════════════════════════════════════════════════════
 #  设置界面
@@ -113,15 +140,18 @@ class SettingsWidget(ScrollArea):
 
         self._build_appearance()
         self._build_account()
-        self._build_testing()
+
+        # 开发者选项：仅当 config/config.json 里 developer_mode=true 时构建
+        if _is_developer_mode():
+            log_info("[设置] 开发者模式已启用")
+            self._build_developer()
+
         self._build_logging()
         self._build_about()
 
         self.setWidget(self.container)
         self.setFrameShape(QFrame.NoFrame)
         self.enableTransparentBackground()
-
-        self.setWidget(self.container)
         AppStyle.SETTINGS_SCROLL.apply(self)
 
     # ── 外观 ──
@@ -243,21 +273,108 @@ class SettingsWidget(ScrollArea):
                 parent=self, position=InfoBarPosition.TOP, duration=3000,
             )
 
-    # ── 幻形灵测试调试 ──
-    def _build_testing(self):
-        group = SettingCardGroup("幻形灵测试（调试）", self.container)
+    # ── 开发者选项 ──
+    def _build_developer(self):
+        group = SettingCardGroup("开发者选项", self.container)
 
+        # 幻形灵测试：强制风控等级
         self.forceRiskCard = ComboBoxSettingCard(
             cfg.forceRiskLevel,
             FIF.VPN,
-            "强制风控等级",
+            "幻形灵测试：强制风控等级",
             "调试用：跳过真实评分，直接进入指定等级",
             texts=["关闭", "low", "medium", "high", "extreme"],
             parent=group,
         )
-
         group.addSettingCard(self.forceRiskCard)
+
+        # 当前 Topic 信息
+        self.topicInfoCard = PushSettingCard(
+            "复制 ID",
+            FIF.COPY,
+            "当前 Topic",
+            "（未打开任何作品）",
+            parent=group,
+        )
+        self.topicInfoCard.clicked.connect(self._on_copy_topic_ids)
+        group.addSettingCard(self.topicInfoCard)
+
+        # 运行 devtest 脚本
+        self.devTestCard = PushSettingCard(
+            "打开",
+            FIF.DEVELOPER_TOOLS,
+            "功能及状态测试",
+            "运行 devtest/ 下的诊断脚本",
+            parent=group,
+        )
+        self.devTestCard.clicked.connect(self._open_devtest_panel)
+        group.addSettingCard(self.devTestCard)
+
         self.vBoxLayout.addWidget(group)
+
+        # 订阅 app_state 信号，topic 变化时自动刷新
+        from app_state import app_state
+        app_state.readerTopicChanged.connect(self._on_reader_topic_changed)
+        self._refresh_topic_info()   # 初始化一次
+
+    def _on_reader_topic_changed(self, topic):
+        """app_state 里 topic 变了 → 更新卡片显示"""
+        self._refresh_topic_info()
+
+    def _refresh_topic_info(self):
+        from app_state import app_state
+
+        topic = app_state.current_reader_topic
+        if topic is None:
+            self.topicInfoCard.setContent("（未打开任何作品）")
+            self.topicInfoCard.button.setEnabled(False)
+            return
+
+        root_id = topic.parent_id if topic.parent_id else topic.id
+        title = (topic.title or "").strip()
+        content = f"ID {topic.id} · 根 {root_id} · {title}"
+        if len(content) > 60:
+            content = content[:57] + "..."
+
+        self.topicInfoCard.setContent(content)
+        self.topicInfoCard.button.setEnabled(True)
+
+    def _on_copy_topic_ids(self):
+        from app_state import app_state
+
+        topic = app_state.current_reader_topic
+        if topic is None:
+            InfoBar.info(
+                "无数据", "当前没有打开的阅读器",
+                parent=self, position=InfoBarPosition.TOP, duration=2000,
+            )
+            return
+
+        root_id = topic.parent_id if topic.parent_id else topic.id
+        text = (
+            f"topic_id={topic.id}\n"
+            f"root_id={root_id}\n"
+            f"title={topic.title}\n"
+            f"author={topic.author_name}"
+        )
+        QApplication.clipboard().setText(text)
+
+        InfoBar.success(
+            "已复制", f"Topic ID {topic.id} / 根 ID {root_id}",
+            parent=self, position=InfoBarPosition.TOP, duration=2000,
+        )
+
+    def _open_devtest_panel(self):
+        try:
+            from plugins.devtest.panel import DevTestPanel
+        except Exception as e:
+            InfoBar.error(
+                "打开失败", f"devtest 面板加载失败: {e}",
+                parent=self, position=InfoBarPosition.TOP, duration=3000,
+            )
+            return
+        panel = DevTestPanel(parent=self)
+        panel.show()
 
     # ── 日志 ──
     def _build_logging(self):
@@ -289,7 +406,7 @@ class SettingsWidget(ScrollArea):
         self.versionCard.clicked.connect(self._on_check_update)
 
         self.repoCard = HyperlinkCard(
-            "https://github.com/yourname/fimtale-client",
+            "https://github.com/RainPurNova418/fluentale-client",
             "打开仓库",
             FIF.CODE,
             "源码仓库",
