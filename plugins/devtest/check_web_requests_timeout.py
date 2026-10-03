@@ -4,7 +4,7 @@ import ssl
 import requests
 
 HOST = "p5.toutiaoimg.com"
-URL = "https://p5.toutiaoimg.com/origin/ff5c00033a9f36c704f3"
+URL = "https://p5.toutiaoimg.com"
 
 # ── 1. DNS ──
 t = time.time()
