@@ -1,4 +1,3 @@
-# styles.py
 from enum import Enum
 from qfluentwidgets import StyleSheetBase, Theme, qconfig
 from toolmethods import resource_path

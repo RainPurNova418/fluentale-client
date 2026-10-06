@@ -1,4 +1,3 @@
-# test_usb.py
 from toolmethods import list_removable_drives, get_volume_serial, get_volume_label, get_usb_id
 
 drives = list_removable_drives()

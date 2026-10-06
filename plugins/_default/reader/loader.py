@@ -1,10 +1,6 @@
-# plugins/_default/reader/loader.py
-# coding: utf-8
-"""
-后台加载器：多线程 + 信号回主线程
-"""
 import os
 import re
+import sys
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -20,20 +16,10 @@ from toolmethods import log_warning, log_debug
 from . import api, cache
 from .api import Topic, ApiError, NotFoundError
 
-
-# ══════════════════════════════════════════════════════════════
-#  强制 IPv4（绕过 IPv6 回退的 20 秒超时）
-# ══════════════════════════════════════════════════════════════
-
 def _allowed_gai_family_ipv4():
     return socket.AF_INET
 
 urllib3_cn.allowed_gai_family = _allowed_gai_family_ipv4
-
-
-# ══════════════════════════════════════════════════════════════
-#  全局 Session
-# ══════════════════════════════════════════════════════════════
 
 BROWSER_HEADERS = {
     "User-Agent": (
@@ -59,21 +45,11 @@ def _get_session() -> requests.Session:
                 _session = s
     return _session
 
-
-# ══════════════════════════════════════════════════════════════
-#  图片 URL 提取
-# ══════════════════════════════════════════════════════════════
-
 _IMG_URL_RE = re.compile(r'!\[[^\]]*\]\(\s*(\S+?)(?:\s+["\'][^"\']*["\'])?\s*\)')
 
 
 def _extract_image_urls(content: str):
     return _IMG_URL_RE.findall(content or "")
-
-
-# ══════════════════════════════════════════════════════════════
-#  加载工作线程
-# ══════════════════════════════════════════════════════════════
 
 class LoadWorker(QObject):
     started = Signal(int)
@@ -103,7 +79,10 @@ class LoadWorker(QObject):
 
         if topic is not None:
             self.meta_ready.emit(self.topic_id, topic)
-            self._download_images(topic)
+            try:
+                self._download_images(topic)
+            except Exception as e:
+                log_warning(f"[Loader] 图片下载阶段异常：{e}")
             self.content_ready.emit(self.topic_id, topic)
 
         self.finished.emit(self.topic_id)
@@ -176,7 +155,8 @@ class LoadWorker(QObject):
             pbar.set_postfix_str(f"ok {ok} fail {failed}")
 
         pbar.close()
-        print(flush=True)   # tqdm 结束后换行，避免日志顶残影
+        if sys.stdout is not None:
+            print(flush=True)
 
         if failed:
             log_warning(
@@ -185,11 +165,6 @@ class LoadWorker(QObject):
             )
         else:
             log_debug(f"[Loader] Topic {topic.id}: 图片下载全部完成 {ok}/{total}")
-
-
-# ══════════════════════════════════════════════════════════════
-#  全局线程池
-# ══════════════════════════════════════════════════════════════
 
 class Loader:
     def __init__(self, max_workers: int = None):
@@ -204,9 +179,7 @@ class Loader:
     def shutdown(self):
         self.executor.shutdown(wait=False)
 
-
 _loader: Loader = None
-
 
 def get_loader() -> Loader:
     global _loader

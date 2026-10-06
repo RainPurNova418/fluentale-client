@@ -1,5 +1,3 @@
-# toolmethods.py
-# -*- coding: utf-8 -*-
 """
 通用工具：日志、路径、配置读写、平台检测、U 盘标识
 """
@@ -30,16 +28,10 @@ except ImportError:
         NORMAL = ''
         RESET_ALL = ''
 
-
-# ══════════════════════════════════════════════════════════════
-#  基础日志
-# ══════════════════════════════════════════════════════════════
-
 def _safe_print(msg: str):
     """console=False 打包时 sys.stdout 为 None，避免崩溃"""
     if sys.stdout is not None:
         print(msg)
-
 
 def log_info(msg: str):
     if HAS_COLORAMA:
@@ -47,13 +39,11 @@ def log_info(msg: str):
     else:
         _safe_print(f"[INFO] {msg}")
 
-
 def log_success(msg: str):
     if HAS_COLORAMA:
         _safe_print(f"{Fore.GREEN}[SUCCESS] {msg}{Style.RESET_ALL}")
     else:
         _safe_print(f"[SUCCESS] {msg}")
-
 
 def log_warning(msg: str):
     if HAS_COLORAMA:
@@ -61,20 +51,17 @@ def log_warning(msg: str):
     else:
         _safe_print(f"[WARNING] {msg}")
 
-
 def log_error(msg: str):
     if HAS_COLORAMA:
         _safe_print(f"{Fore.RED}[ERROR] {msg}{Style.RESET_ALL}")
     else:
         _safe_print(f"[ERROR] {msg}")
 
-
 def log_debug(msg: str):
     if HAS_COLORAMA:
         _safe_print(f"{Fore.MAGENTA}[DEBUG] {msg}{Style.RESET_ALL}")
     else:
         _safe_print(f"[DEBUG] {msg}")
-
 
 def log(msg: str, level: str = "INFO"):
     """
@@ -95,11 +82,6 @@ def log(msg: str, level: str = "INFO"):
     else:
         _safe_print(msg)
 
-
-# ══════════════════════════════════════════════════════════════
-#  路径
-# ══════════════════════════════════════════════════════════════
-
 def resource_path(rel_path: str) -> str:
     """资源路径：开发时基于当前文件，打包后基于 _MEIPASS"""
     if hasattr(sys, "_MEIPASS"):
@@ -108,7 +90,6 @@ def resource_path(rel_path: str) -> str:
         base = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base, rel_path)
 
-
 def get_config_dir() -> str:
     """项目根目录下的 config/ 目录，不存在则创建"""
     base = os.path.dirname(os.path.abspath(__file__))
@@ -116,15 +97,9 @@ def get_config_dir() -> str:
     os.makedirs(path, exist_ok=True)
     return path
 
-
 def get_user_settings_path() -> str:
     """config/UserSettings.json 的完整路径"""
     return os.path.join(get_config_dir(), "UserSettings.json")
-
-
-# ══════════════════════════════════════════════════════════════
-#  配置读写（读写分离，兼容打包）
-# ══════════════════════════════════════════════════════════════
 
 def _config_paths():
     """
@@ -138,7 +113,6 @@ def _config_paths():
     else:
         writable = resource
     return resource, writable
-
 
 def get_json_info(key: str = None, default=None):
     """
@@ -191,7 +165,6 @@ def get_json_info(key: str = None, default=None):
             f"  已查找: {writable_p}\n"
             f"  已查找: {resource_p}")
 
-
 def set_json_info(key: str, value) -> bool:
     """
     写入 config/config.json 的某个字段。
@@ -228,18 +201,11 @@ def set_json_info(key: str, value) -> bool:
         log_error(f"[set_json_info] 写入失败:\n  path={writable_p}\n  {e}")
         return False
 
-
 def get_version():
     return get_json_info("version", default="0.0.0")
 
-
-# ══════════════════════════════════════════════════════════════
-#  平台检测
-# ══════════════════════════════════════════════════════════════
-
 def is_windows() -> bool:
     return sys.platform.startswith("win")
-
 
 def get_windows_build() -> int:
     if not is_windows():
@@ -249,23 +215,15 @@ def get_windows_build() -> int:
     except Exception:
         return 0
 
-
 def is_win11() -> bool:
     return get_windows_build() >= 22000
-
 
 def is_win10() -> bool:
     build = get_windows_build()
     return 10240 <= build < 22000
 
-
 def supports_mica() -> bool:
     return is_win11()
-
-
-# ══════════════════════════════════════════════════════════════
-#  U 盘
-# ══════════════════════════════════════════════════════════════
 
 def list_removable_drives() -> list:
     if not is_windows():
@@ -284,7 +242,6 @@ def list_removable_drives() -> list:
                 drives.append(root)
     return drives
 
-
 def get_volume_serial(drive: str) -> int:
     if not is_windows():
         return 0
@@ -301,7 +258,6 @@ def get_volume_serial(drive: str) -> int:
     )
     return serial.value if ok else 0
 
-
 def get_volume_label(drive: str) -> str:
     if not is_windows():
         return ""
@@ -316,9 +272,8 @@ def get_volume_label(drive: str) -> str:
     )
     return buf.value if ok else ""
 
-
 def get_usb_id(drive: str) -> str:
-    """卷序列号 + 卷标 → SHA256 前 32 字符"""
+    """卷序列号 + 卷标 → SHA256 前 32 字符，很简陋的U盘登录。"""
     import hashlib
     serial = get_volume_serial(drive)
     label = get_volume_label(drive)
@@ -326,7 +281,6 @@ def get_usb_id(drive: str) -> str:
         return ""
     raw = f"{serial}:{label}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:32]
-
 
 if __name__ == "__main__":
     print(get_version())

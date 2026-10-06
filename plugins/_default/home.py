@@ -1,5 +1,3 @@
-# plugins/_default/home.py
-# coding: utf-8
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QWidget
@@ -47,7 +45,6 @@ class LinkCard(QFrame):
         self.titleLabel.setObjectName('titleLabel')
         self.contentLabel.setObjectName('contentLabel')
 
-        # 没有 url 的卡片不显示右下角链接图标
         if self.url is None:
             self.urlWidget.hide()
 
@@ -169,7 +166,6 @@ class HomeWidget(QWidget):
         if main is None or not hasattr(main, "switchTo"):
             return
 
-        # 在 stackedWidget 里按 objectName 找
         target = None
         sw = main.stackedWidget
         for i in range(sw.count()):
@@ -179,8 +175,6 @@ class HomeWidget(QWidget):
                 break
 
         if target is None:
-            print(">>> [Home] stackedWidget 里找不到 readerInterface")
-            # 打印一下有哪些，方便排查
             for i in range(sw.count()):
                 w = sw.widget(i)
                 print(f"    [{i}] objectName={w.objectName()!r} class={type(w).__name__}")
@@ -193,10 +187,8 @@ class HomeWidget(QWidget):
 
     def _find_reader_plugin(self, main):
         """在主窗口的所有插件里找 plugin_id == '阅读器' 的"""
-        # 优先用主窗口暴露的方法
         if hasattr(main, "get_plugin_by_id"):
             return main.get_plugin_by_id("阅读器")
-        # 回退：遍历 MainWindowPlugin 里存的 plugins
         for plugin_list in getattr(main, "plugins", {}).values() \
                 if isinstance(getattr(main, "plugins", None), dict) else []:
             for p in plugin_list:

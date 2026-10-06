@@ -1,5 +1,3 @@
-# plugin_manager.py
-'''插件管理器，嗯对。'''
 import importlib
 import importlib.util
 import sys
@@ -26,7 +24,6 @@ class PluginManager:
             log("插件目录不存在，已自动创建", "WARNING")
             return self.plugins
 
-        # plugins_root 的父目录进 sys.path，让 plugins.xxx 能被正常 import
         parent = str(self.plugins_root.parent.resolve())
         if parent not in sys.path:
             sys.path.insert(0, parent)
@@ -36,7 +33,6 @@ class PluginManager:
             log("加载系统默认插件 (_default)", "INFO")
             self._scan_container(default_dir, is_default=True)
 
-        # 这些目录放在 plugins/ 下，但不是插件，跳过
         _SKIP_DIRS = {"devtest", "__pycache__"}
 
         for item in sorted(self.plugins_root.iterdir()):
@@ -50,10 +46,7 @@ class PluginManager:
 
         return self.plugins
 
-    # ── 扫描 ──
-
     def _scan_container(self, directory: Path, is_default: bool):
-        """容器目录下每个 .py 文件或子目录，都是一个插件候选"""
         for item in sorted(directory.iterdir()):
             if item.name.startswith("."):
                 continue
@@ -65,7 +58,6 @@ class PluginManager:
 
             elif item.is_dir():
                 if item.name.startswith("_"):
-                    # 下划线开头：当作纯容器递归（比如 _default 内部）
                     self._scan_container(item, is_default)
                     continue
 
@@ -74,13 +66,6 @@ class PluginManager:
                     self._load_from_package(item, entry, is_default)
 
     def _find_package_entry(self, package_dir: Path) -> Optional[Path]:
-        """
-        找插件包的入口文件：
-        1. __init__.py
-        2. <dirname>.py
-        3. 目录下唯一的 .py
-        4. 都不满足 → 报错返回 None
-        """
         entry = package_dir / "__init__.py"
         if entry.is_file():
             return entry
@@ -110,8 +95,6 @@ class PluginManager:
                 f"  请使用 __main__.py 或 {package_dir.name}.py 指定入口"
             )
         return None
-
-    # ── 加载 ──
 
     def _load_from_file(self, py_file: Path, is_default: bool):
         module_name = f"_plugin_{py_file.parent.name}_{py_file.stem}"
@@ -157,9 +140,7 @@ class PluginManager:
         else:
             module_name = f"{package_dir.name}.{entry.stem}"
         return importlib.import_module(module_name)
-
-    # ── 注册 ──
-
+    
     def _register(self, module, plugin_path: str, source_name: str, is_default: bool):
         classes = self._find_plugin_classes(module)
         if not classes:

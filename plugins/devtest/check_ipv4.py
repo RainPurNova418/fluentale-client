@@ -1,5 +1,3 @@
-# test_ipv4.py
-# coding: utf-8
 """
 测试 IPv6 回退导致的 TCP 连接慢问题。
 跑法：python test_ipv4.py
@@ -7,12 +5,10 @@
 import socket
 import time
 
-URL = "https://p5.toutiaoimg.com/origin/ff5c00033a9f36c704f3"
+URL = "https://p5.toutiaoimg.com"
 HOST = "p5.toutiaoimg.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-
-# ── DNS 解析结果 ──
 print("=== DNS 解析结果 ===", flush=True)
 try:
     infos = socket.getaddrinfo(HOST, 443, type=socket.SOCK_STREAM)
@@ -21,8 +17,6 @@ try:
 except Exception as e:
     print(f"  DNS 失败: {e}", flush=True)
 
-
-# ── 测试 1：默认（可能先走 IPv6）──
 print("\n=== 测试 1: 默认 requests ===", flush=True)
 import requests
 t = time.time()
@@ -33,8 +27,6 @@ try:
 except Exception as e:
     print(f"  失败: {e}, 耗时 {time.time() - t:.2f}s", flush=True)
 
-
-# ── 测试 2：强制 IPv4 ──
 print("\n=== 测试 2: 强制 IPv4（urllib3 hook）===", flush=True)
 import urllib3.util.connection as urllib3_cn
 
@@ -51,8 +43,6 @@ try:
 except Exception as e:
     print(f"  失败: {e}, 耗时 {time.time() - t:.2f}s", flush=True)
 
-
-# ── 测试 3：Session 复用 ──
 print("\n=== 测试 3: Session 复用（第 2 次请求）===", flush=True)
 s = requests.Session()
 s.headers.update(HEADERS)

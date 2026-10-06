@@ -1,5 +1,3 @@
-# plugins/_default/reader/cache.py
-# coding: utf-8
 """
 阅读器本地缓存。
 
@@ -28,11 +26,6 @@ IMAGE_CACHE_DIR = CACHE_DIR / "images"
 MAX_CACHE_ENTRIES = 200
 MAX_CACHE_AGE_DAYS = 30
 
-
-# ══════════════════════════════════════════════════════════════
-#  目录 & meta
-# ══════════════════════════════════════════════════════════════
-
 def _ensure_dir():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -59,11 +52,6 @@ def _save_meta(meta: dict):
 
 def _topic_path(topic_id: int) -> Path:
     return CACHE_DIR / f"{topic_id}.json"
-
-
-# ══════════════════════════════════════════════════════════════
-#  Topic 缓存
-# ══════════════════════════════════════════════════════════════
 
 def get(topic_id: int, max_age_days: int = MAX_CACHE_AGE_DAYS) -> Optional[dict]:
     """读取缓存。过期返回 None。"""
@@ -155,7 +143,6 @@ def get_recent_topics(limit: int = 30):
                 if t:
                     title = t
 
-                # 如果是章节，ParentInfo 指向所属作品
                 parent = data.get("ParentInfo") or {}
                 if isinstance(parent, dict) and parent:
                     pid = parent.get("ID")
@@ -206,11 +193,6 @@ def clear():
                 f.unlink()
             except OSError:
                 pass
-
-
-# ══════════════════════════════════════════════════════════════
-#  图片缓存
-# ══════════════════════════════════════════════════════════════
 
 def image_cache_path(url: str) -> Path:
     h = hashlib.sha256(url.encode("utf-8")).hexdigest()

@@ -1,4 +1,3 @@
-# window_plugin.py
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QColor
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
@@ -16,7 +15,6 @@ from toolmethods import (
 from plugins._default.settings import cfg
 import sys
 
-
 class MainWindowPlugin(MSFluentWindow, BasePlugin):
     def __init__(self):
         log_debug("开始初始化 MainWindowPlugin")
@@ -27,7 +25,6 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
         self.setWindowTitle(f"FluentTale Client - v{get_version()}")
         self.setWindowIcon(QIcon(resource_path("images/ftclogo.png")))
 
-        # ── 应用配置：Mica、标题栏颜色 ──
         self._apply_settings()
         qconfig.themeChanged.connect(self._on_theme_changed)
 
@@ -52,7 +49,6 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
         else:
             log_warning("未找到隐私政策插件，跳过")
 
-        # ── 登录 ──
         login_plugin = self._find_plugin_by_id(all_plugins, "登录")
         if login_plugin:
             log_info("找到登录插件，准备进行登录")
@@ -61,12 +57,8 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
                 sys.exit(0)
             log_success("登录成功")
         else:
-            log_warning("未找到登录插件，继续运行（无登录验证）")
+            log_warning("未找到登录插件，继续运行")
 
-                # ── UI 插件排序 ──
-        # 值越小越靠前；负数/正数仅用于分组，不影响顶部/底部归属
-        # 顶部：主页第一，其余按加载顺序
-        # 底部：设置固定
         TOP_ORDER = {
             "主页": 0,
         }
@@ -81,7 +73,6 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
             if PluginType.UI in p.plugin_types and p.plugin_id != "登录"
         ]
 
-        # 主页排第一，保证它成为默认显示页
         ui_plugins.sort(
             key=lambda p: (0 if p.plugin_id == "主页" else 1)
         )
@@ -119,14 +110,12 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
         self.showMaximized()
         log_success("窗口已最大化显示")
 
-    # ── 配置应用 ──
     def _apply_settings(self):
         """应用配置：Mica、主题模式、标题栏颜色"""
 
-        # 主题模式切换
         cfg.themeMode.valueChanged.connect(lambda t: setTheme(t))
 
-        # Mica：仅 Win11
+        # 仅 Win11
         if supports_mica():
             self.setMicaEffectEnabled(cfg.get(cfg.micaEnabled))
             cfg.micaEnabled.valueChanged.connect(self.setMicaEffectEnabled)
@@ -135,7 +124,6 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
             self.setMicaEffectEnabled(False)
             log_info("[窗口] 当前系统不支持 Mica，已跳过")
 
-        # 标题栏文字颜色：跟随主题
         self._apply_titlebar_color()
         self.titleBar.update()
         qconfig.themeChanged.connect(self._apply_titlebar_color)
@@ -144,8 +132,8 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
         """标题栏文字颜色：浅色主题黑色，深色主题白色"""
         try:
             self.titleBar.titleLabel.setTextColor(
-                QColor(0, 0, 0),       # 浅色主题
-                QColor(255, 255, 255),  # 深色主题
+                QColor(0, 0, 0),
+                QColor(255, 255, 255),
             )
         except AttributeError:
             pass
@@ -157,7 +145,7 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
         return None
 
     def get_plugin_by_id(self, plugin_id: str):
-        """供外部（如主页卡片）按 plugin_id 查找插件实例"""
+        """供插件按 plugin_id 查找插件实例"""
         for p in getattr(self, "_all_plugins", []):
             if getattr(p, "plugin_id", "") == plugin_id:
                 return p
@@ -199,16 +187,11 @@ class MainWindowPlugin(MSFluentWindow, BasePlugin):
         return None
 
     def _on_theme_changed(self):
-        """主题切换时，手动刷新所有需要重绘的控件"""
-        # 1. 应用全局主题
         setTheme(cfg.themeMode.value)
 
-        # 2. 标题栏文字颜色
         self._apply_titlebar_color()
 
-        # 3. 强制标题栏重绘（含右上角金刚键）
         if hasattr(self, 'titleBar'):
             self.titleBar.update()
 
-        # 4. 强制整个窗口重绘
         self.update()

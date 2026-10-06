@@ -1,5 +1,3 @@
-# app_state.py
-# coding: utf-8
 """
 全局应用状态。
 
@@ -37,8 +35,6 @@ class AppState(QObject):
             self._current_reader_window = None
             self.readerTopicChanged.emit(None)
 
-
-# ── 单例：整个进程只此一份 ──
 _KEY = "_fluentale_app_state_singleton"
 if _KEY not in sys.modules:
     sys.modules[_KEY] = AppState()

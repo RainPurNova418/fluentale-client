@@ -1,5 +1,3 @@
-# tools/sample_topics.py
-# -*- coding: utf-8 -*-
 """
 随机采样 FimTale 帖子，对比 md 和 html 两种格式的差异。
 
@@ -14,11 +12,6 @@ from plugins._default.login import CredentialStore
 
 import requests
 
-
-# ══════════════════════════════════════════════════════════════
-#  配置区
-# ═════════════════════════════════════════════════════════════
-
 _cred = CredentialStore().load()
 if not _cred:
     print("未登录，无法使用此脚本")
@@ -28,15 +21,11 @@ API_KEY = _cred.get("api_key", "")
 API_PASS = _cred.get("api_pass", "")
 BASE = "https://fimtale.com"
 
-# 手动指定的 ID，优先采样
 MANUAL_IDS = [
     1431,      # Shortcode 系统说明
     15169,     # 已知 md 丢折叠块
-    # 4,       # 用户手册
-    # 85171,   # 之前的例子
 ]
 
-# 按 ID 区间分段采样，覆盖早期 / 中期 / 近期 / 最新
 RANGES = [
     (100,   999),      # 早期
     (5000,  20000),    # 中期
@@ -51,11 +40,6 @@ OUT_DIR = (
     Path(os.getenv("APPDATA", os.path.expanduser("~")))
     / "FimtaleClient" / "devtest_samples"
 )
-
-
-# ══════════════════════════════════════════════════════════════
-#  请求
-# ══════════════════════════════════════════════════════════════
 
 class NotFound(Exception):
     """404：帖子不存在或已删除"""
@@ -74,19 +58,14 @@ def fetch(topic_id: int, fmt: str = None) -> dict:
     r.raise_for_status()
     return r.json()
 
-
-# ══════════════════════════════════════════════════════════════
-#  标记剥离（粗估纯文本长度）
-# ══════════════════════════════════════════════════════════════
-
 def strip_md(text: str) -> str:
-    text = re.sub(r'!\[([^\]]*)\]\([^)]*\)', '', text)      # 图片整删（对齐 html）
+    text = re.sub(r'!\[([^\]]*)\]\([^)]*\)', '', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
     text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'^[=\-]{3,}\s*$', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)   # 新增：剥引用符号
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
     text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     text = re.sub(r'`([^`]*)`', r'\1', text)
     text = re.sub(r'\s+', '', text)
@@ -101,11 +80,6 @@ def strip_html(text: str) -> str:
     text = re.sub(r'\s+', '', text)
     return text
 
-
-# ══════════════════════════════════════════════════════════════
-#  计数
-# ══════════════════════════════════════════════════════════════
-
 def count_md_img(t):    return len(re.findall(r'!\[[^\]]*\]\([^)]*\)', t))
 def count_html_img(t):  return len(re.findall(r'<img[^>]*>', t))
 def count_md_link(t):   return len(re.findall(r'(?<!!)\[[^\]]*\]\([^)]*\)', t))
@@ -113,17 +87,11 @@ def count_html_link(t): return len(re.findall(r'<a\s[^>]*>', t))
 def count_md_head(t):   return len(re.findall(r'^#{1,6}\s+', t, flags=re.MULTILINE))
 def count_html_head(t): return len(re.findall(r'<h[1-6][^>]*>', t, flags=re.MULTILINE))
 
-
-# ══════════════════════════════════════════════════════════════
-#  单条对比
-# ══════════════════════════════════════════════════════════════
-
 def compare(tid: int):
     """
     返回 (result_dict, None) 成功；
     返回 (None, reason) 失败，reason ∈ {'404', 'md_error', 'html_error', 'status'}
     """
-    # 拉 md
     try:
         md = fetch(tid, "md")
     except NotFound:
@@ -133,7 +101,6 @@ def compare(tid: int):
         return None, "md_error"
     time.sleep(SLEEP)
 
-    # 拉 html
     try:
         html = fetch(tid)
     except NotFound:
@@ -149,7 +116,6 @@ def compare(tid: int):
     md_c = md["TopicInfo"]["Content"]
     html_c = html["TopicInfo"]["Content"]
 
-    # 每次写入前确保目录存在（防止 CWD 或权限变化导致目录丢失）
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     (OUT_DIR / f"{tid}.md.json").write_text(
@@ -180,20 +146,13 @@ def compare(tid: int):
         "html_head": count_html_head(html_c),
     }, None
 
-
-# ══════════════════════════════════════════════════════════════
-#  采样：手动 ID + 每个区间随机抽 N 个，404 自动换
-# ══════════════════════════════════════════════════════════════
-
 def sample_ids():
     """返回最终的采样 ID 列表（已排序去重）"""
     picked = set()
 
-    # 1. 手动
     for tid in MANUAL_IDS:
         picked.add(tid)
 
-    # 2. 每个区间随机抽，404 重抽
     for lo, hi in RANGES:
         got = 0
         retry = 0
@@ -203,7 +162,6 @@ def sample_ids():
             if tid in picked:
                 continue
 
-            # 先探测 md（便宜）
             try:
                 fetch(tid, "md")
                 picked.add(tid)
@@ -220,11 +178,6 @@ def sample_ids():
             print(f"  [warn] 区间 {lo}-{hi} 只采到 {got}/{PER_RANGE} 个")
 
     return sorted(picked)
-
-
-# ══════════════════════════════════════════════════════════════
-#  主流程
-# ══════════════════════════════════════════════════════════════
 
 def main():
     print(f"输出目录: {OUT_DIR}")
@@ -259,7 +212,6 @@ def main():
               f"ratio={r['ratio']:.2f}{flag}{img_flag}")
         print(f"          {r['title']}")
 
-    # ── 汇总 ──
     print("\n" + "=" * 70)
     print(f"有效样本: {len(results)}    404: {len(not_found)}")
     print("=" * 70)
@@ -282,7 +234,6 @@ def main():
     print(f"标题: md={sum(r['md_head'] for r in results)} "
           f"html={sum(r['html_head'] for r in results)}")
 
-    # ── 异常列表 ──
     bad = [r for r in results if r["ratio"] < 0.85 or r["ratio"] > 1.15]
     img_bad = [r for r in results if r["expected_img"] > r["md_img"]]
 

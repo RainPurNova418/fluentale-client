@@ -1,9 +1,3 @@
-# plugins/devtest/panel.py
-# coding: utf-8
-"""
-功能及状态测试面板：左侧脚本列表，右侧实时输出。
-继承 _FluentDialog，全 qfluentwidgets 风格。
-"""
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
@@ -25,13 +19,11 @@ class DevTestPanel(_FluentDialog):
         self.setMinimumSize(900, 600)
         self.resize(1000, 680)
 
-        # 隐藏默认按钮，用我们自己的按钮行
         for btn in (getattr(self, "yesButton", None),
                     getattr(self, "cancelButton", None)):
             if btn is not None:
                 btn.hide()
 
-        # 顶部标题 + 说明
         self.addContent(TitleLabel("功能及状态测试", self))
         desc = CaptionLabel(
             "开发者专用。选中左侧条目后点击「运行」，输出会实时显示在右侧。",
@@ -40,13 +32,11 @@ class DevTestPanel(_FluentDialog):
         desc.setWordWrap(True)
         self.addContent(desc)
 
-        # ── 主体：左列表 + 右输出 ──
         body = QWidget(self)
         bodyLayout = QHBoxLayout(body)
         bodyLayout.setContentsMargins(0, 0, 0, 0)
         bodyLayout.setSpacing(12)
 
-        # 左侧：脚本列表
         self.scriptList = ListWidget(body)
         self.scriptList.setFixedWidth(260)
         for s in SCRIPTS:
@@ -54,7 +44,6 @@ class DevTestPanel(_FluentDialog):
         self.scriptList.currentRowChanged.connect(self._on_script_changed)
         bodyLayout.addWidget(self.scriptList)
 
-        # 右侧：描述 + 输出
         right = QWidget(body)
         rightLayout = QVBoxLayout(right)
         rightLayout.setContentsMargins(0, 0, 0, 0)
@@ -74,7 +63,6 @@ class DevTestPanel(_FluentDialog):
         bodyLayout.addWidget(right, 1)
         self.addContent(body)
 
-        # ── 底部按钮行 ──
         btnRow = QWidget(self)
         btnLayout = QHBoxLayout(btnRow)
         btnLayout.setContentsMargins(0, 0, 0, 0)
@@ -96,8 +84,6 @@ class DevTestPanel(_FluentDialog):
 
         if SCRIPTS:
             self.scriptList.setCurrentRow(0)
-
-    # ── 交互 ──
 
     def _on_script_changed(self, row):
         if row < 0 or row >= len(SCRIPTS):

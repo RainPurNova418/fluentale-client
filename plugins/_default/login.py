@@ -1,8 +1,3 @@
-# plugins/_default/login.py
-# -*- coding: utf-8 -*-
-"""
-Fimtale 客户端登录插件（含风控、幻形灵验证、DPAPI 凭据存储、U 盘解锁、7天自动登录）
-"""
 import sys
 import os
 import time
@@ -40,7 +35,6 @@ from qfluentwidgets import (
 from qframelesswindow import FramelessWindow
 from base_plugin import BasePlugin
 
-# ── 同目录题库导入 ──
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
@@ -59,10 +53,6 @@ except ImportError:
     _HAS_TOTP = False
 
 
-# ══════════════════════════════════════════════════════════════
-#  配置区
-# ══════════════════════════════════════════════════════════════
-
 class LoginConfig:
     CRED_DIR = os.path.join(os.getenv('APPDATA', os.path.expanduser('~')), 'FimtaleClient')
     CRED_FILE = 'credentials.dat'
@@ -71,7 +61,6 @@ class LoginConfig:
     ATTEMPT_WINDOW = 900
     LOCK_DURATION = 300
 
-    # (评分上限, 等级名, 幻形灵题数, 通过线, 需邮件)
     RISK_LEVELS = [
         (20,  'normal',  0,  0, False),
         (40,  'low',     3,  2, False),
@@ -98,14 +87,9 @@ class LoginConfig:
     API_KEY_RE = r"[A-Za-z0-9]{8}"
     API_PASS_RE = r"[A-Za-z0-9]{12}"
 
-    # ── 7 天自动登录 ──
     AUTO_LOGIN_DAYS = 7
     AUTO_LOGIN_MAX_RISK = 20
 
-
-# ══════════════════════════════════════════════════════════════
-#  本地凭据存储（DPAPI）
-# ══════════════════════════════════════════════════════════════
 
 class CredentialStore:
     def __init__(self):
@@ -146,7 +130,6 @@ class CredentialStore:
                     pass
 
     def load(self):
-        """返回 dict 或 None。兼容旧格式。"""
         if not _HAS_DPAPI or not os.path.exists(self.path):
             return None
         import pickle
@@ -221,10 +204,6 @@ class CredentialStore:
         return self.set_usb('')
 
 
-# ══════════════════════════════════════════════════════════════
-#  速率限制
-# ══════════════════════════════════════════════════════════════
-
 class RateLimiter:
     def __init__(self):
         self._attempts = deque(maxlen=LoginConfig.MAX_ATTEMPTS)
@@ -251,10 +230,6 @@ class RateLimiter:
         self._attempts.clear()
         self._lock_until = 0.0
 
-
-# ══════════════════════════════════════════════════════════════
-#  风控评分（系统环境指纹，不碰第三方软件）
-# ══════════════════════════════════════════════════════════════
 
 class RiskEvaluator:
     def __init__(self):
@@ -293,7 +268,6 @@ class RiskEvaluator:
             return False
 
     def _get_screen_info(self) -> dict:
-        """屏幕信息：分辨率 + 显示器数量 + DPI"""
         try:
             from PySide6.QtWidgets import QApplication
             app = QApplication.instance()
@@ -314,14 +288,12 @@ class RiskEvaluator:
             return {'width': 0, 'height': 0, 'count': 0, 'dpi': 0}
 
     def _get_uptime_minutes(self) -> int:
-        """系统运行时长（分钟）"""
         try:
             return int(ctypes.windll.kernel32.GetTickCount64() / 60000)
         except Exception:
             return 0
 
     def _get_install_age_days(self) -> int:
-        """Windows 安装距今的天数"""
         import winreg
         try:
             k = winreg.OpenKey(
@@ -335,7 +307,6 @@ class RiskEvaluator:
             return 0
 
     def _get_total_ram_gb(self) -> float:
-        """物理内存总量（GB）"""
         try:
             class MEMORYSTATUSEX(ctypes.Structure):
                 _fields_ = [
@@ -357,7 +328,6 @@ class RiskEvaluator:
             return 0.0
 
     def _get_system_drive_free_gb(self) -> float:
-        """C 盘剩余空间（GB）"""
         try:
             import shutil
             _, _, free = shutil.disk_usage('C:\\')
@@ -452,13 +422,7 @@ class RiskEvaluator:
         return self._evaluate_local(api_key)
 
 
-# ══════════════════════════════════════════════════════════════
-#  Fluent 独立弹窗基类
-# ══════════════════════════════════════════════════════════════
-
 class _FluentDialog(FramelessWindow):
-    """独立 Fluent 子窗口"""
-
     def __init__(self, title: str, parent=None):
         super().__init__()
         self.setWindowTitle(title)
@@ -473,10 +437,12 @@ class _FluentDialog(FramelessWindow):
             self.setParent(target, Qt.Dialog)
 
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-
-        self.titleBar.maxBtn.hide()
-        self.titleBar.minBtn.hide()
         self.titleBar.setDoubleClickEnabled(False)
+
+        if hasattr(self.titleBar, 'minBtn'):
+            self.titleBar.minBtn.hide()
+        if hasattr(self.titleBar, 'maxBtn'):
+            self.titleBar.maxBtn.hide()
 
         self.passed = False
         self._build_base()
@@ -574,7 +540,6 @@ class _FluentDialog(FramelessWindow):
             except AttributeError:
                 pass
 
-            # 最小化和最大化按钮：中性色
             for btn in (self.titleBar.minBtn, self.titleBar.maxBtn):
                 try:
                     btn.setNormalColor(btn_normal)
@@ -586,16 +551,11 @@ class _FluentDialog(FramelessWindow):
                 except AttributeError:
                     pass
 
-            # 关闭按钮：保留系统默认的红色悬停，只改图标颜色
             try:
                 self.titleBar.closeBtn.setNormalColor(btn_normal)
             except AttributeError:
                 pass
 
-
-# ══════════════════════════════════════════════════════════════
-#  幻形灵验证
-# ══════════════════════════════════════════════════════════════
 
 class EquestrianTestDialog(_FluentDialog):
 
@@ -746,22 +706,11 @@ class EquestrianTestDialog(_FluentDialog):
         return False
 
     def _on_yes(self):
-        """
-        覆盖基类：validate 返回 True 表示答题结束，
-        此时 self.passed 已由 validate 内部按答对数量计算，
-        不能再被无条件覆盖为 True。
-        """
         if self.validate():
             self.close()
 
 
-# ══════════════════════════════════════════════════════════════
-#  TOTP 验证（含 U 盘解锁）
-# ══════════════════════════════════════════════════════════════
-
 class TOTPDialog(_FluentDialog):
-    """双因素验证：TOTP 动态码 + 可选 U 盘解锁"""
-
     def __init__(self, secret: str = '', usb_id: str = '', parent=None):
         super().__init__('双因素验证', parent)
         self.secret = secret
@@ -829,8 +778,6 @@ class TOTPDialog(_FluentDialog):
 
 
 class TOTPBindDialog(_FluentDialog):
-    """首次绑定 TOTP"""
-
     def __init__(self, user: str = '', parent=None):
         super().__init__('绑定双因素验证', parent)
         self.secret = pyotp.random_base32()
@@ -930,13 +877,7 @@ class TOTPBindDialog(_FluentDialog):
         return False
 
 
-# ══════════════════════════════════════════════════════════════
-#  U 盘绑定（可选）
-# ══════════════════════════════════════════════════════════════
-
 class USBBindDialog(_FluentDialog):
-    """可选：把当前插入的 U 盘绑为解锁方式"""
-
     def __init__(self, parent=None):
         super().__init__('绑定 U 盘解锁', parent)
         self.usb_id = ''
@@ -990,10 +931,6 @@ class USBBindDialog(_FluentDialog):
         return True
 
 
-# ══════════════════════════════════════════════════════════════
-#  邮件验证码
-# ══════════════════════════════════════════════════════════════
-
 class EmailCodeDialog(_FluentDialog):
     def __init__(self, api_key: str, parent=None):
         super().__init__('邮件验证', parent)
@@ -1039,10 +976,6 @@ class EmailCodeDialog(_FluentDialog):
         )
         return False
 
-
-# ══════════════════════════════════════════════════════════════
-#  Fimtale 凭据验证
-# ══════════════════════════════════════════════════════════════
 
 def verify_fimtale_credentials(api_key: str, api_pass: str, server: str) -> bool:
     base = server.rstrip('/')
@@ -1092,10 +1025,6 @@ def verify_fimtale_credentials(api_key: str, api_pass: str, server: str) -> bool
     log_warning(f'[FimTale] 未预期响应 status={r.status_code} data={data}')
     return False
 
-
-# ══════════════════════════════════════════════════════════════
-#  原始 UI（含 7 天自动登录复选框）
-# ══════════════════════════════════════════════════════════════
 
 class Ui_Form(object):
     def setupUi(self, Form):
@@ -1252,10 +1181,6 @@ class Ui_Form(object):
         self.pushButton_2.setText(_translate("Form", "找回密码"))
 
 
-# ══════════════════════════════════════════════════════════════
-#  主登录界面
-# ══════════════════════════════════════════════════════════════
-
 class LoginWidget(FluentWidget, Ui_Form):
     login_success = False
 
@@ -1374,7 +1299,6 @@ class LoginWidget(FluentWidget, Ui_Form):
         self.pushButton.setEnabled(ok)
 
     def _set_busy(self, busy: bool):
-        """切换登录按钮的忙碌状态"""
         if busy:
             self.pushButton.setText("验证中…")
             self.pushButton.setEnabled(False)
@@ -1435,11 +1359,9 @@ class LoginWidget(FluentWidget, Ui_Form):
             self.rate_limiter.record_failure()
             return
 
-        # ── 风控评分 ──
         risk_score, _detail = self.risk.evaluate(api_key)
         level, total, need, need_email = self._resolve_level(risk_score)
 
-        # ── 7 天自动登录检查 ──
         cred = self.credentials.load() or {}
         last_verified = cred.get('last_verified', 0.0)
         auto_login_opt = self.autoLoginCheckBox.isChecked()
@@ -1471,7 +1393,6 @@ class LoginWidget(FluentWidget, Ui_Form):
             log_info(f'[Login] 风险 {risk_score} 超过自动登录阈值 '
                      f'{LoginConfig.AUTO_LOGIN_MAX_RISK}，走完整流程')
 
-        # ── 幻形灵测试 ──
         if total > 0:
             dlg = EquestrianTestDialog(risk_score, level, total, need, parent=self)
             if not self._run_dialog(dlg):
@@ -1479,7 +1400,6 @@ class LoginWidget(FluentWidget, Ui_Form):
                 self.rate_limiter.record_failure()
                 return
 
-        # ── 邮件验证（暂未启用）──
         if need_email:
             dlg = EmailCodeDialog(api_key, parent=self)
             if not self._run_dialog(dlg):
@@ -1487,7 +1407,6 @@ class LoginWidget(FluentWidget, Ui_Form):
                 self.rate_limiter.record_failure()
                 return
 
-        # ── 本地 TOTP 锁 ──
         existing_secret = cred.get('totp_secret', '')
         existing_usb = cred.get('usb_id', '')
         totp_chance = LoginConfig.TOTP_PROBABILITY.get(level, 0.0)
@@ -1521,11 +1440,9 @@ class LoginWidget(FluentWidget, Ui_Form):
 
         self._usb_id = existing_usb
 
-        # ── 提示用户正在连接 FimTale ──
         self.pushButton.setText("连接 FimTale…")
         QApplication.processEvents()
 
-        # ── FimTale 凭据校验 ──
         if not verify_fimtale_credentials(api_key, api_pass, server):
             self._error('登录失败', 'APIKey 或 APIPass 错误')
             self.rate_limiter.record_failure()
@@ -1533,7 +1450,6 @@ class LoginWidget(FluentWidget, Ui_Form):
 
         last_verified = time.time()
 
-        # ── 可选：高风险登录时引导绑定 U 盘 ──
         if trigger_totp and not self._usb_id:
             dlg = USBBindDialog(parent=self)
             self._run_dialog(dlg)
@@ -1541,7 +1457,6 @@ class LoginWidget(FluentWidget, Ui_Form):
                 self._usb_id = dlg.usb_id
                 log_info(f'[USB] 已绑定 {self._usb_id[:8]}***')
 
-        # ── 成功 ──
         self.rate_limiter.reset()
         if self.checkBox.isChecked():
             self.credentials.save(
@@ -1571,10 +1486,6 @@ class LoginWidget(FluentWidget, Ui_Form):
                                                  Qt.KeepAspectRatioByExpanding,
                                                  Qt.SmoothTransformation))
 
-
-# ══════════════════════════════════════════════════════════════
-#  插件入口
-# ══════════════════════════════════════════════════════════════
 
 class LoginPlugin(BasePlugin):
     def __init__(self, plugin_path=""):

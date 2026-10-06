@@ -1,8 +1,3 @@
-# plugins/_default/reader/api.py
-# coding: utf-8
-"""
-FimTale Reader 数据层
-"""
 import re
 from dataclasses import dataclass, field
 from typing import Optional, List
@@ -100,10 +95,10 @@ class Topic:
     parent_id: Optional[int] = None
     parent_title: str = ""
 
+    branches: dict = field(default_factory=dict)
+    is_custom_branch: bool = False
+
     author: Optional[Author] = None
-
-
-# ── 凭据 ──
 
 def _load_credentials():
     store = CredentialStore()
@@ -116,9 +111,6 @@ def _load_credentials():
         raise NotAuthenticatedError("凭据不完整，请重新登录")
     server = cred.get("server", "") or DEFAULT_SERVER
     return api_key, api_pass, server
-
-
-# ── 请求 ──
 
 def _request(topic_id: int, api_key: str, api_pass: str, server: str,
              fmt: Optional[str] = None) -> dict:
@@ -153,9 +145,6 @@ def _request(topic_id: int, api_key: str, api_pass: str, server: str,
     except ValueError:
         raise ApiError(f"响应非 JSON: {r.text[:120]}")
 
-
-# ── 内容格式选择 ──
-
 _MD_IMG_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
 
 
@@ -176,9 +165,6 @@ def _pick_content(md_data: dict, html_fetcher) -> tuple:
         html_data = html_fetcher()
         return html_data["TopicInfo"].get("Content", "") or "", "html"
     return md_content, "md"
-
-
-# ── 解析 ──
 
 def _parse_tag(tags_data) -> Tag:
     if not isinstance(tags_data, dict):
@@ -207,6 +193,27 @@ def _parse_menu(menu_data) -> List[Chapter]:
     return result
 
 
+def _parse_branches(branches_data) -> dict:
+    """
+    互动文的分支：{分支名: topic_id}
+
+    容错处理非 int 值（比如嵌套 dict 带 ID 字段）。
+    普通文的 Branches 通常是 {"下一章": xxx}，空字符串也当作无分支。
+    """
+    if not isinstance(branches_data, dict):
+        return {}
+    result = {}
+    for name, tid in branches_data.items():
+        if isinstance(tid, int):
+            result[name] = tid
+        elif isinstance(tid, dict) and "ID" in tid:
+            try:
+                result[name] = int(tid["ID"])
+            except (TypeError, ValueError):
+                continue
+    return result
+
+
 def _parse_author(author_data) -> Optional[Author]:
     if not isinstance(author_data, dict):
         return None
@@ -226,9 +233,11 @@ def _parse_topic(data: dict, content: str, fmt: str) -> Topic:
 
     parent_id = None
     parent_title = ""
+    is_custom_branch = False
     if isinstance(parent, dict) and parent:
         parent_id = parent.get("ID")
         parent_title = parent.get("Title", "") or ""
+        is_custom_branch = bool(parent.get("IsCustomBranch", False))
 
     return Topic(
         id=info.get("ID", 0) or 0,
@@ -263,11 +272,11 @@ def _parse_topic(data: dict, content: str, fmt: str) -> Topic:
         parent_id=parent_id,
         parent_title=parent_title,
 
+        branches=_parse_branches(info.get("Branches")),
+        is_custom_branch=is_custom_branch,
+
         author=_parse_author(data.get("AuthorInfo")),
     )
-
-
-# ── 顶层入口 ──
 
 def fetch_topic(topic_id: int) -> Topic:
     global _last_raw

@@ -1,5 +1,3 @@
-# functest/test_risk.py
-# coding: utf-8 -*-
 """
 独立测试 RiskEvaluator 的评分逻辑。
 跑法（项目根目录）：python functest/test_risk.py
@@ -8,7 +6,6 @@
 import os
 import sys
 
-# functest/test_risk.py → 上两级 = 项目根
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)

@@ -1,18 +1,10 @@
-# plugins/_default/settings.py
-# coding: utf-8
-"""
-设置插件：外观 / 账号 / 开发者选项 / 日志 / 关于
-
-开发者选项默认隐藏。想开启的用户需要手动编辑 config/config.json，
-将 "developer_mode" 改为 true，然后重启程序。
-"""
-import os
 from styles import AppStyle
 from PySide6.QtCore import Qt, QEventLoop
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QApplication
 from plugins._default.login import (
     CredentialStore, _FluentDialog, TOTPDialog, TOTPBindDialog,
 )
+import os
 
 from qfluentwidgets import (
     FluentIcon as FIF,
@@ -42,9 +34,8 @@ from qfluentwidgets.common.config import (
 from base_plugin import BasePlugin, PluginType
 from toolmethods import (
     get_version, log_info, log_success, log_warning, log_error, log_debug,
-    resource_path, supports_mica, get_json_info,
+    supports_mica, get_json_info,
 )
-
 
 class ConfirmDialog(_FluentDialog):
     """不依赖遮罩的确认框，替代 MessageBox"""
@@ -63,13 +54,7 @@ class ConfirmDialog(_FluentDialog):
         self.cancelButton.setText('取消')
         self.resize(440, 240)
 
-
-# ══════════════════════════════════════════════════════════════
-#  客户端配置
-# ══════════════════════════════════════════════════════════════
-
 class ClientConfig(QConfig):
-    # 外观
     themeMode = OptionsConfigItem(
         "Appearance", "ThemeMode", Theme.AUTO,
         OptionsValidator([Theme.AUTO, Theme.LIGHT, Theme.DARK]),
@@ -77,11 +62,9 @@ class ClientConfig(QConfig):
     )
     micaEnabled = ConfigItem("Appearance", "Mica", True, BoolValidator())
 
-    # 行为
     debugLog = ConfigItem("Behavior", "DebugLog", False, BoolValidator())
     keepCredentials = ConfigItem("Behavior", "KeepCredentials", True, BoolValidator())
 
-    # 幻形灵测试
     forceRiskLevel = OptionsConfigItem(
         "Testing", "ForceRiskLevel", "off",
         OptionsValidator(["off", "low", "medium", "high", "extreme"]),
@@ -92,11 +75,6 @@ cfg = ClientConfig()
 
 from toolmethods import get_user_settings_path
 qconfig.load(get_user_settings_path(), cfg)
-
-
-# ══════════════════════════════════════════════════════════════
-#  开发者模式判断
-# ══════════════════════════════════════════════════════════════
 
 def _is_developer_mode() -> bool:
     """
@@ -111,11 +89,6 @@ def _is_developer_mode() -> bool:
     except Exception as e:
         log_warning(f"[设置] 读取 developer_mode 失败: {e}")
         return False
-
-
-# ══════════════════════════════════════════════════════════════
-#  设置界面
-# ══════════════════════════════════════════════════════════════
 
 CRED_PATH = os.path.join(
     os.getenv('APPDATA', os.path.expanduser('~')),
@@ -141,7 +114,6 @@ class SettingsWidget(ScrollArea):
         self._build_appearance()
         self._build_account()
 
-        # 开发者选项：仅当 config/config.json 里 developer_mode=true 时构建
         if _is_developer_mode():
             log_info("[设置] 开发者模式已启用")
             self._build_developer()
@@ -154,7 +126,6 @@ class SettingsWidget(ScrollArea):
         self.enableTransparentBackground()
         AppStyle.SETTINGS_SCROLL.apply(self)
 
-    # ── 外观 ──
     def _build_appearance(self):
         group = SettingCardGroup("外观", self.container)
 
@@ -175,7 +146,6 @@ class SettingsWidget(ScrollArea):
             parent=group,
         )
 
-        # Win10 及以下：禁用 Mica 开关并强制关闭
         if not supports_mica():
             self.micaCard.setEnabled(False)
             cfg.micaEnabled.value = False
@@ -184,7 +154,6 @@ class SettingsWidget(ScrollArea):
         group.addSettingCard(self.micaCard)
         self.vBoxLayout.addWidget(group)
 
-    # ── 账号 ──
     def _build_account(self):
         group = SettingCardGroup("账号", self.container)
 
@@ -197,7 +166,6 @@ class SettingsWidget(ScrollArea):
         )
         self.clearCredCard.clicked.connect(self._on_clear_credentials)
 
-        # ── 双因素验证 ──
         self.totpCard = PushSettingCard(
             "绑定",
             FIF.FINGERPRINT,
@@ -221,7 +189,6 @@ class SettingsWidget(ScrollArea):
         group.addSettingCard(self.openFimtaleCard)
         self.vBoxLayout.addWidget(group)
 
-        # 初始化卡片状态
         self._refresh_totp_card()
 
     def _refresh_totp_card(self):
@@ -273,11 +240,9 @@ class SettingsWidget(ScrollArea):
                 parent=self, position=InfoBarPosition.TOP, duration=3000,
             )
 
-    # ── 开发者选项 ──
     def _build_developer(self):
         group = SettingCardGroup("开发者选项", self.container)
 
-        # 幻形灵测试：强制风控等级
         self.forceRiskCard = ComboBoxSettingCard(
             cfg.forceRiskLevel,
             FIF.VPN,
@@ -288,7 +253,6 @@ class SettingsWidget(ScrollArea):
         )
         group.addSettingCard(self.forceRiskCard)
 
-        # 当前 Topic 信息
         self.topicInfoCard = PushSettingCard(
             "复制 ID",
             FIF.COPY,
@@ -299,7 +263,6 @@ class SettingsWidget(ScrollArea):
         self.topicInfoCard.clicked.connect(self._on_copy_topic_ids)
         group.addSettingCard(self.topicInfoCard)
 
-        # 运行 devtest 脚本
         self.devTestCard = PushSettingCard(
             "打开",
             FIF.DEVELOPER_TOOLS,
@@ -312,10 +275,9 @@ class SettingsWidget(ScrollArea):
 
         self.vBoxLayout.addWidget(group)
 
-        # 订阅 app_state 信号，topic 变化时自动刷新
         from app_state import app_state
         app_state.readerTopicChanged.connect(self._on_reader_topic_changed)
-        self._refresh_topic_info()   # 初始化一次
+        self._refresh_topic_info()
 
     def _on_reader_topic_changed(self, topic):
         """app_state 里 topic 变了 → 更新卡片显示"""
@@ -376,7 +338,6 @@ class SettingsWidget(ScrollArea):
         panel = DevTestPanel(parent=self)
         panel.show()
 
-    # ── 日志 ──
     def _build_logging(self):
         group = SettingCardGroup("日志", self.container)
 
@@ -391,7 +352,6 @@ class SettingsWidget(ScrollArea):
         group.addSettingCard(self.debugLogCard)
         self.vBoxLayout.addWidget(group)
 
-    # ── 关于 ──
     def _build_about(self):
         group = SettingCardGroup("关于", self.container)
 
@@ -446,7 +406,6 @@ class SettingsWidget(ScrollArea):
         existing = cred.get('totp_secret', '')
 
         if existing:
-            # ── 解绑：先验证当前 TOTP ──
             dlg = TOTPDialog(secret=existing, parent=self)
             if not self._run_dialog(dlg):
                 InfoBar.warning(
@@ -464,7 +423,6 @@ class SettingsWidget(ScrollArea):
             self._refresh_totp_card()
 
         else:
-            # ── 绑定 ──
             dlg = TOTPBindDialog(user=cred.get('api_key', ''), parent=self)
             if not self._run_dialog(dlg):
                 InfoBar.warning(
@@ -480,11 +438,6 @@ class SettingsWidget(ScrollArea):
                 parent=self, position=InfoBarPosition.TOP, duration=2500,
             )
             self._refresh_totp_card()
-
-
-# ══════════════════════════════════════════════════════════════
-#  插件入口
-# ══════════════════════════════════════════════════════════════
 
 class SettingsPlugin(BasePlugin):
     def __init__(self, plugin_path=""):

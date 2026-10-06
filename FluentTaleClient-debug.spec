@@ -1,16 +1,9 @@
-# FluentTaleClient-debug.spec
-# -*- mode: python ; coding: utf-8 -*-
-"""
-调试版：console=True，有黑框，日志实时滚动
-"""
 import os
 from PyInstaller.utils.hooks import collect_all
 
-# qfluentwidgets 及 qframelesswindow 的资源
 qf_datas, qf_bins, qf_hidden = collect_all('qfluentwidgets')
 fw_datas, fw_bins, fw_hidden = collect_all('qframelesswindow')
 
-# 递归收集 plugins/ 下的所有文件（保留相对结构）
 _plugin_datas = []
 for _root, _dirs, _files in os.walk('plugins'):
     for _f in _files:
@@ -42,12 +35,13 @@ a = Analysis(
             'concurrent',
             'concurrent.futures',
             'concurrent.futures.thread',
+            'pkg_resources._vendor.jaraco',
+            'jaraco.text',
         ]
     ),
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        # ── 大块头，项目用不到 ──
         'scipy',
         'scipy.sparse',
         'scipy.spatial',
@@ -64,7 +58,6 @@ a = Analysis(
         'notebook',
         'jupyter',
 
-        # ── Qt 绑定：只留 PySide6 ──
         'PyQt5',
         'PyQt5.QtCore',
         'PyQt5.QtGui',
@@ -74,7 +67,6 @@ a = Analysis(
         'PyQt6',
         'PySide2',
 
-        # ── Qt 用不到的大模块 ──
         'PySide6.QtWebEngineCore',
         'PySide6.QtWebEngineWidgets',
         'PySide6.QtWebEngineQuick',
@@ -111,7 +103,6 @@ a = Analysis(
         'PySide6.QtStateMachine',
         'PySide6.QtTextToSpeech',
 
-        # ── 标准库用不到的 ──
         'tkinter',
         'unittest',
         'pydoc',
@@ -133,12 +124,12 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='FluentTaleClient-debug',    # ← 换名，避免覆盖发布版
+    name='FluentTaleClient-debug',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,                     # ← 调试版：有黑框
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

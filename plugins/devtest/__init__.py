@@ -1,5 +1,3 @@
-# plugins/devtest/__init__.py
-# coding: utf-8
 """
 开发者测试脚本集合。
 

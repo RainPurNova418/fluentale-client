@@ -1,16 +1,9 @@
-# FluentTaleClient.spec
-# -*- mode: python ; coding: utf-8 -*-
-"""
-发布版：console=False，无黑框，日志被 _safe_print 静默丢弃
-"""
 import os
 from PyInstaller.utils.hooks import collect_all
 
-# qfluentwidgets 及 qframelesswindow 的资源
 qf_datas, qf_bins, qf_hidden = collect_all('qfluentwidgets')
 fw_datas, fw_bins, fw_hidden = collect_all('qframelesswindow')
 
-# 递归收集 plugins/ 下的所有文件（保留相对结构）
 _plugin_datas = []
 for _root, _dirs, _files in os.walk('plugins'):
     for _f in _files:
@@ -42,12 +35,13 @@ a = Analysis(
             'concurrent',
             'concurrent.futures',
             'concurrent.futures.thread',
+            'pkg_resources._vendor.jaraco',
+            'jaraco.text',
         ]
     ),
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        # ── 大块头，项目用不到 ──
         'scipy',
         'scipy.sparse',
         'scipy.spatial',
@@ -64,17 +58,6 @@ a = Analysis(
         'notebook',
         'jupyter',
 
-        # ── Qt 绑定：只留 PySide6 ──
-        'PyQt5',
-        'PyQt5.QtCore',
-        'PyQt5.QtGui',
-        'PyQt5.QtWidgets',
-        'PyQt5.QtSvg',
-        'PyQt5.sip',
-        'PyQt6',
-        'PySide2',
-
-        # ── Qt 用不到的大模块 ──
         'PySide6.QtWebEngineCore',
         'PySide6.QtWebEngineWidgets',
         'PySide6.QtWebEngineQuick',
@@ -111,7 +94,6 @@ a = Analysis(
         'PySide6.QtStateMachine',
         'PySide6.QtTextToSpeech',
 
-        # ── 标准库用不到的 ──
         'tkinter',
         'unittest',
         'pydoc',
@@ -138,7 +120,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,                    # ← 发布版：无黑框
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

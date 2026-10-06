@@ -1,5 +1,3 @@
-# plugins/_default/login_questions.py
-# -*- coding: utf-8 -*-
 """
 题库
 """
@@ -64,6 +62,7 @@ HARD = [
     ('时钟从 3 点整到 3 点 15 分，分针走了多少度？', ['90', '90度']),
     ('一个正方形去掉一个角，还剩几个角？', ['3', '三', '5', '五']),
     ('“人”字加一笔是什么字？', ['大', '个', '亼', '亽', '亿', '尺']),
+    # 下一题来自于2024年天津市和平区中考一模填空压轴
     (r'若函数 \(f(x)=\sin(ax-\frac{3\pi}{4})\cdot(ax^2-4x+3a+4)\)\n（其中 \(a>0\)）在区间 \([0,5]\) 上恰有4个零点\n，则 \(a\) 的取值范围为______。（使用KaTeX回答，不含$，需要空格）', [r'\(a \in \{\frac{2}{3}\} \cup (\frac{3}{4}, \frac{19}{20}) \cup [\frac{3}{2}, \frac{19}{12}) \cup (\frac{19}{10}, \frac{17}{8}]\)'])
 ]
 
@@ -87,7 +86,6 @@ def _pick(pool: list, count: int) -> list:
         return []
     if count <= len(pool):
         return random.sample(pool, count)
-    # 全要，再补随机重复的
     result = pool[:]
     random.shuffle(result)
     while len(result) < count:

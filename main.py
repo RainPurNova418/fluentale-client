@@ -84,28 +84,21 @@ def global_exception_hook(exc_type, exc_value, exc_tb):
 
 sys.excepthook = global_exception_hook
 
-
-# ========== 启动应用 ==========
 from window_plugin import MainWindowPlugin
 
 
 if __name__ == "__main__":
     log("有app", "DEBUG")
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.window=false"
     app = QApplication(sys.argv)
 
-    # ── 加载客户端配置 ──
     try:
         from plugins._default.settings import cfg
-        log("配置已加载", "DEBUG")
     except ImportError as e:
         log(f"cfg 导入失败: {e}", "ERROR")
         raise
 
-    # ── 应用保存的主题和颜色 ──
     setTheme(cfg.themeMode.value)
-    print("=====================")
-    log(f"主题已应用: mode={cfg.themeMode.value}, "
-        f"color={cfg.themeColor.value.name()}", "DEBUG")
 
     main_window = MainWindowPlugin()
     sys.exit(app.exec())
